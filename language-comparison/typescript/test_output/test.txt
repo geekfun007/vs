@@ -1,0 +1,3 @@
+Hello, TypeScript!
+第二行内容
+第三行
