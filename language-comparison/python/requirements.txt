@@ -1,0 +1,17 @@
+# Python 依赖 (基础示例使用标准库，以下为可选)
+# pip install -r requirements.txt
+
+# HTTP 客户端 (推荐)
+httpx>=0.27.0
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# 异步文件 IO
+aiofiles>=23.2.0
+
+# Web 框架 (FastAPI 示例)
+fastapi>=0.109.0
+uvicorn>=0.27.0
+
+# 类型检查
+mypy>=1.8.0
