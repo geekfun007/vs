@@ -319,6 +319,519 @@ async fn main() {
 
 ---
 
+## 🔢 Math.trunc 截断函数对比
+
+`trunc` 函数用于截断数字的小数部分，只保留整数部分（向零取整）。
+
+### 行为说明
+
+```
+trunc(3.7)  →  3   (正数：向下取整)
+trunc(-3.7) → -3   (负数：向上取整)
+trunc(3.2)  →  3
+trunc(-3.2) → -3
+```
+
+> **注意**: `trunc` 与 `floor` 不同！`floor(-3.7) = -4`，而 `trunc(-3.7) = -3`
+
+### 四种语言实现
+
+**TypeScript / JavaScript**
+```typescript
+// 使用 Math.trunc()
+Math.trunc(3.7);    // 3
+Math.trunc(-3.7);   // -3
+Math.trunc(3.2);    // 3
+Math.trunc(-3.2);   // -3
+
+// 其他方式（不完全等价）
+Math.floor(3.7);    // 3  (正数时等价)
+Math.floor(-3.7);   // -4 (负数时不同！)
+Math.ceil(-3.7);    // -3 (负数时等价)
+
+// 位运算截断（仅适用于 32 位整数范围）
+(3.7 | 0);          // 3
+~~3.7;              // 3
+```
+
+**Python**
+```python
+import math
+
+# 使用 math.trunc()
+math.trunc(3.7)     # 3
+math.trunc(-3.7)    # -3
+
+# int() 函数效果相同
+int(3.7)            # 3
+int(-3.7)           # -3
+
+# 对比 floor
+math.floor(3.7)     # 3
+math.floor(-3.7)    # -4  (不同！)
+
+# 特殊方法 __trunc__
+class MyNumber:
+    def __init__(self, value):
+        self.value = value
+    def __trunc__(self):
+        return int(self.value)
+
+math.trunc(MyNumber(3.7))  # 3
+```
+
+**Go**
+```go
+import "math"
+
+// 使用 math.Trunc()
+math.Trunc(3.7)     // 3.0 (返回 float64)
+math.Trunc(-3.7)    // -3.0
+
+// 转换为整数
+int(math.Trunc(3.7))  // 3
+
+// 直接类型转换（效果相同）
+int(3.7)            // 3
+int(-3.7)           // -3
+
+// 对比 Floor
+math.Floor(3.7)     // 3.0
+math.Floor(-3.7)    // -4.0 (不同！)
+```
+
+**Rust**
+```rust
+// 使用 trunc() 方法
+(3.7_f64).trunc()      // 3.0
+(-3.7_f64).trunc()     // -3.0
+
+// 转换为整数
+3.7_f64.trunc() as i32   // 3
+(-3.7_f64).trunc() as i32 // -3
+
+// 直接转换（效果相同）
+3.7 as i32             // 3
+-3.7 as i32            // -3
+
+// 对比 floor
+(3.7_f64).floor()      // 3.0
+(-3.7_f64).floor()     // -4.0 (不同！)
+
+// 对比 round（四舍五入）
+(3.7_f64).round()      // 4.0
+(-3.7_f64).round()     // -4.0
+```
+
+### 对比总结
+
+| 语言 | 截断函数 | 返回类型 | 备注 |
+|------|----------|----------|------|
+| TypeScript | `Math.trunc()` | number | ES6+，位运算可替代但有限制 |
+| Python | `math.trunc()` / `int()` | int | 支持自定义 `__trunc__` |
+| Go | `math.Trunc()` | float64 | 需手动转 int |
+| Rust | `.trunc()` | 原浮点类型 | 方法调用，类型安全 |
+
+### 边界情况处理
+
+```
+┌──────────────┬────────────┬────────────┬────────────┬────────────┐
+│ 输入         │ TypeScript │ Python     │ Go         │ Rust       │
+├──────────────┼────────────┼────────────┼────────────┼────────────┤
+│ Infinity     │ Infinity   │ Error      │ +Inf       │ inf        │
+│ -Infinity    │ -Infinity  │ Error      │ -Inf       │ -inf       │
+│ NaN          │ NaN        │ Error      │ NaN        │ NaN        │
+│ 0.0          │ 0          │ 0          │ 0.0        │ 0.0        │
+│ -0.0         │ -0         │ 0          │ -0.0       │ -0.0       │
+└──────────────┴────────────┴────────────┴────────────┴────────────┘
+```
+
+---
+
+## 🎭 装饰器模式对比
+
+装饰器是一种在不修改原始代码的情况下增强函数/类行为的模式。
+
+### 概念对比
+
+| 语言 | 原生支持 | 实现方式 | 语法糖 |
+|------|---------|----------|--------|
+| TypeScript | ✅ (实验性) | 装饰器 | `@decorator` |
+| Python | ✅ | 装饰器 | `@decorator` |
+| Go | ❌ | 高阶函数/中间件 | 无 |
+| Rust | ❌ | 过程宏/trait | `#[attribute]` |
+
+### Python 装饰器（最完善）
+
+```python
+from functools import wraps
+import time
+
+# 基础装饰器
+def log_calls(func):
+    @wraps(func)  # 保留原函数元信息
+    def wrapper(*args, **kwargs):
+        print(f"调用 {func.__name__}")
+        return func(*args, **kwargs)
+    return wrapper
+
+@log_calls
+def greet(name):
+    return f"Hello, {name}!"
+
+# 带参数的装饰器
+def retry(times=3, delay=1):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for i in range(times):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if i == times - 1:
+                        raise
+                    time.sleep(delay)
+        return wrapper
+    return decorator
+
+@retry(times=5, delay=2)
+def fetch_data(url):
+    # 可能失败的操作
+    pass
+
+# 类装饰器
+def singleton(cls):
+    instances = {}
+    @wraps(cls)
+    def get_instance(*args, **kwargs):
+        if cls not in instances:
+            instances[cls] = cls(*args, **kwargs)
+        return instances[cls]
+    return get_instance
+
+@singleton
+class Database:
+    pass
+
+# 多个装饰器（从下往上执行）
+@log_calls
+@retry(times=3)
+def risky_operation():
+    pass
+```
+
+### TypeScript 装饰器
+
+```typescript
+// 需要在 tsconfig.json 中启用: "experimentalDecorators": true
+
+// 方法装饰器
+function log(
+  target: any,
+  propertyKey: string,
+  descriptor: PropertyDescriptor
+) {
+  const original = descriptor.value;
+  descriptor.value = function (...args: any[]) {
+    console.log(`调用 ${propertyKey}`);
+    return original.apply(this, args);
+  };
+  return descriptor;
+}
+
+class UserService {
+  @log
+  getUser(id: number) {
+    return { id, name: "John" };
+  }
+}
+
+// 类装饰器
+function sealed(constructor: Function) {
+  Object.seal(constructor);
+  Object.seal(constructor.prototype);
+}
+
+@sealed
+class BankAccount {
+  balance: number = 0;
+}
+
+// 属性装饰器
+function readonly(target: any, key: string) {
+  Object.defineProperty(target, key, {
+    writable: false,
+  });
+}
+
+class Config {
+  @readonly
+  apiKey = "secret";
+}
+
+// 参数装饰器
+function required(
+  target: any,
+  propertyKey: string,
+  parameterIndex: number
+) {
+  // 验证逻辑
+}
+
+class Validator {
+  validate(@required name: string) {}
+}
+
+// 装饰器工厂（带参数）
+function debounce(ms: number) {
+  return function (
+    target: any,
+    key: string,
+    descriptor: PropertyDescriptor
+  ) {
+    let timeout: NodeJS.Timeout;
+    const original = descriptor.value;
+    descriptor.value = function (...args: any[]) {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => original.apply(this, args), ms);
+    };
+    return descriptor;
+  };
+}
+
+class SearchBox {
+  @debounce(300)
+  search(query: string) {
+    console.log("Searching:", query);
+  }
+}
+```
+
+### Go 高阶函数模式
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "net/http"
+    "time"
+)
+
+// 函数类型定义
+type Handler func(w http.ResponseWriter, r *http.Request)
+
+// 日志中间件
+func withLogging(h Handler) Handler {
+    return func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        h(w, r)
+        log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+    }
+}
+
+// 认证中间件
+func withAuth(h Handler) Handler {
+    return func(w http.ResponseWriter, r *http.Request) {
+        token := r.Header.Get("Authorization")
+        if token == "" {
+            http.Error(w, "Unauthorized", 401)
+            return
+        }
+        h(w, r)
+    }
+}
+
+// 重试装饰器
+func withRetry(times int, fn func() error) func() error {
+    return func() error {
+        var err error
+        for i := 0; i < times; i++ {
+            if err = fn(); err == nil {
+                return nil
+            }
+            time.Sleep(time.Second * time.Duration(i+1))
+        }
+        return err
+    }
+}
+
+// 计时装饰器
+func measure[T any](name string, fn func() T) T {
+    start := time.Now()
+    result := fn()
+    fmt.Printf("%s took %v\n", name, time.Since(start))
+    return result
+}
+
+// 使用
+func main() {
+    handler := withLogging(withAuth(func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("Hello!"))
+    }))
+    
+    http.HandleFunc("/", handler)
+    
+    // 泛型版本使用
+    result := measure("computation", func() int {
+        // 耗时操作
+        return 42
+    })
+}
+```
+
+### Rust 过程宏与 Trait
+
+```rust
+// 属性宏（类似装饰器，需要定义过程宏）
+use proc_macro::TokenStream;
+
+// 在 proc-macro crate 中定义
+#[proc_macro_attribute]
+pub fn log_calls(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // 解析并转换代码
+    item
+}
+
+// 使用属性宏
+#[log_calls]
+fn my_function() {
+    println!("Hello!");
+}
+
+// ----------------------------
+// 常用的高阶函数模式
+// ----------------------------
+
+use std::time::Instant;
+
+// 计时装饰器
+fn measure<F, T>(name: &str, f: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    let start = Instant::now();
+    let result = f();
+    println!("{} took {:?}", name, start.elapsed());
+    result
+}
+
+// 重试装饰器
+fn with_retry<F, T, E>(times: usize, mut f: F) -> Result<T, E>
+where
+    F: FnMut() -> Result<T, E>,
+{
+    let mut last_err = None;
+    for _ in 0..times {
+        match f() {
+            Ok(v) => return Ok(v),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(last_err.unwrap())
+}
+
+// 使用
+fn main() {
+    let result = measure("calculation", || {
+        // 耗时操作
+        42
+    });
+
+    let data = with_retry(3, || {
+        fetch_from_api()
+    });
+}
+
+// ----------------------------
+// 使用 Trait 实现装饰器模式
+// ----------------------------
+
+trait Drawable {
+    fn draw(&self);
+}
+
+struct Circle {
+    radius: f64,
+}
+
+impl Drawable for Circle {
+    fn draw(&self) {
+        println!("Drawing circle with radius {}", self.radius);
+    }
+}
+
+// 装饰器结构体
+struct BorderDecorator<T: Drawable> {
+    inner: T,
+    border_width: u32,
+}
+
+impl<T: Drawable> Drawable for BorderDecorator<T> {
+    fn draw(&self) {
+        println!("Drawing border (width: {})", self.border_width);
+        self.inner.draw();
+    }
+}
+
+// 使用
+fn main() {
+    let circle = Circle { radius: 5.0 };
+    let bordered = BorderDecorator {
+        inner: circle,
+        border_width: 2,
+    };
+    bordered.draw();
+}
+
+// ----------------------------
+// 常见的内置属性宏
+// ----------------------------
+#[derive(Debug, Clone, PartialEq)]  // 自动派生 trait
+struct Point { x: i32, y: i32 }
+
+#[cfg(test)]  // 条件编译
+mod tests {
+    #[test]
+    fn it_works() {}
+}
+
+#[inline]  // 内联提示
+fn fast_function() {}
+
+#[deprecated(since = "1.0.0", note = "use new_function instead")]
+fn old_function() {}
+```
+
+### 装饰器模式对比总结
+
+| 特性 | Python | TypeScript | Go | Rust |
+|------|--------|------------|-----|------|
+| 语法简洁度 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ |
+| 类型安全 | ⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 运行时灵活性 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ |
+| 编译时优化 | ⭐ | ⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 学习曲线 | 低 | 中等 | 中等 | 高 |
+
+### 常见应用场景
+
+```
+┌────────────────┬─────────────────────────────────────┐
+│ 应用场景        │ 最佳选择                             │
+├────────────────┼─────────────────────────────────────┤
+│ Web 中间件      │ Go (标准模式) / Python (Flask)      │
+│ AOP 切面编程    │ Python / TypeScript                │
+│ 权限验证        │ 所有语言都适用                       │
+│ 日志记录        │ 所有语言都适用                       │
+│ 缓存/记忆化     │ Python (@lru_cache)                │
+│ 依赖注入        │ TypeScript (NestJS)                │
+│ 编译时代码生成  │ Rust (过程宏)                       │
+└────────────────┴─────────────────────────────────────┘
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
