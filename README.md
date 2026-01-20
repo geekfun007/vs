@@ -1747,6 +1747,1479 @@ for c in "Hello😀".chars() { }  // 遍历字符
 
 ---
 
+## ⚡ 异步与并发
+
+### 并发模型概览
+
+| 语言 | 并发模型 | 异步关键字 | 运行时 | 特点 |
+|------|----------|------------|--------|------|
+| TypeScript | 事件循环 | `async/await` | V8/Node | 单线程非阻塞 |
+| Python | 协程 + 多进程 | `async/await` | asyncio | GIL 限制多线程 |
+| Go | CSP (Goroutines) | 无 (原生) | Go Runtime | M:N 调度 |
+| Rust | 零成本异步 | `async/await` | tokio/async-std | 无运行时开销 |
+
+### TypeScript 异步编程
+
+```typescript
+// ==================== 基础 async/await ====================
+
+async function fetchUser(id: number): Promise<User> {
+  const response = await fetch(`/api/users/${id}`);
+  return response.json();
+}
+
+// 调用
+const user = await fetchUser(1);
+
+// ==================== Promise 基础 ====================
+
+// 创建 Promise
+const promise = new Promise<string>((resolve, reject) => {
+  setTimeout(() => resolve("done"), 1000);
+});
+
+// Promise 链式调用
+fetch('/api/data')
+  .then(res => res.json())
+  .then(data => console.log(data))
+  .catch(err => console.error(err))
+  .finally(() => console.log('完成'));
+
+// ==================== 并行执行 ====================
+
+// Promise.all - 全部成功才成功
+const [users, posts] = await Promise.all([
+  fetchUsers(),
+  fetchPosts()
+]);
+
+// Promise.allSettled - 等待全部完成（不管成功失败）
+const results = await Promise.allSettled([
+  fetchUser(1),
+  fetchUser(999)  // 可能失败
+]);
+results.forEach(r => {
+  if (r.status === 'fulfilled') console.log(r.value);
+  else console.log(r.reason);
+});
+
+// Promise.race - 第一个完成的
+const fastest = await Promise.race([
+  fetchFromServer1(),
+  fetchFromServer2()
+]);
+
+// Promise.any - 第一个成功的 (ES2021)
+const firstSuccess = await Promise.any([
+  fetchFromServer1(),
+  fetchFromServer2()
+]);
+
+// ==================== 并发控制 ====================
+
+// 限制并发数
+async function parallelLimit<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (const task of tasks) {
+    const p = task().then(r => { results.push(r); });
+    executing.push(p);
+
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+      executing.splice(executing.findIndex(e => e === p), 1);
+    }
+  }
+  await Promise.all(executing);
+  return results;
+}
+
+// ==================== 超时控制 ====================
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Timeout')), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
+const data = await withTimeout(fetchData(), 5000);
+
+// ==================== Web Worker (真正的多线程) ====================
+
+// main.ts
+const worker = new Worker('worker.js');
+worker.postMessage({ type: 'compute', data: bigData });
+worker.onmessage = (e) => console.log(e.data);
+
+// worker.js
+self.onmessage = (e) => {
+  const result = heavyComputation(e.data);
+  self.postMessage(result);
+};
+```
+
+### Python 异步编程
+
+```python
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+# ==================== 基础 async/await ====================
+
+async def fetch_user(user_id: int) -> dict:
+    await asyncio.sleep(1)  # 模拟 I/O
+    return {"id": user_id, "name": "John"}
+
+# 运行协程
+user = asyncio.run(fetch_user(1))
+
+# ==================== 并行执行 ====================
+
+async def main():
+    # asyncio.gather - 并行执行多个协程
+    users = await asyncio.gather(
+        fetch_user(1),
+        fetch_user(2),
+        fetch_user(3)
+    )
+    
+    # 允许部分失败
+    results = await asyncio.gather(
+        fetch_user(1),
+        fetch_user(999),
+        return_exceptions=True  # 失败不抛异常，返回 Exception 对象
+    )
+    
+    # asyncio.wait - 更灵活的控制
+    tasks = [asyncio.create_task(fetch_user(i)) for i in range(10)]
+    done, pending = await asyncio.wait(
+        tasks,
+        return_when=asyncio.FIRST_COMPLETED  # 或 ALL_COMPLETED
+    )
+
+asyncio.run(main())
+
+# ==================== 超时控制 ====================
+
+async def fetch_with_timeout():
+    try:
+        result = await asyncio.wait_for(
+            fetch_user(1),
+            timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        print("超时了")
+
+# ==================== 异步迭代器 ====================
+
+async def fetch_pages():
+    for page in range(1, 10):
+        data = await fetch_page(page)
+        yield data
+
+async def process_pages():
+    async for page in fetch_pages():
+        print(page)
+
+# ==================== 异步上下文管理器 ====================
+
+class AsyncConnection:
+    async def __aenter__(self):
+        await self.connect()
+        return self
+    
+    async def __aexit__(self, *args):
+        await self.disconnect()
+
+async def use_connection():
+    async with AsyncConnection() as conn:
+        await conn.execute("SELECT 1")
+
+# ==================== 信号量控制并发 ====================
+
+async def fetch_with_limit(urls: list[str], limit: int = 10):
+    semaphore = asyncio.Semaphore(limit)
+    
+    async def fetch_one(url):
+        async with semaphore:
+            return await fetch(url)
+    
+    return await asyncio.gather(*[fetch_one(url) for url in urls])
+
+# ==================== 多线程/多进程 (CPU 密集型) ====================
+
+# 线程池 (I/O 密集型，绕过 GIL 限制)
+def blocking_io(path):
+    with open(path) as f:
+        return f.read()
+
+async def read_files(paths):
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        tasks = [loop.run_in_executor(pool, blocking_io, p) for p in paths]
+        return await asyncio.gather(*tasks)
+
+# 进程池 (CPU 密集型)
+def cpu_bound(n):
+    return sum(i * i for i in range(n))
+
+async def parallel_compute():
+    loop = asyncio.get_event_loop()
+    with ProcessPoolExecutor() as pool:
+        results = await asyncio.gather(
+            loop.run_in_executor(pool, cpu_bound, 10**7),
+            loop.run_in_executor(pool, cpu_bound, 10**7)
+        )
+
+# ==================== 队列 ====================
+
+async def producer(queue: asyncio.Queue):
+    for i in range(10):
+        await queue.put(i)
+    await queue.put(None)  # 结束信号
+
+async def consumer(queue: asyncio.Queue):
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        print(f"处理: {item}")
+
+async def main():
+    queue = asyncio.Queue(maxsize=5)
+    await asyncio.gather(producer(queue), consumer(queue))
+```
+
+### Go 并发编程
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "sync"
+    "time"
+)
+
+// ==================== Goroutine 基础 ====================
+
+func main() {
+    // 启动 goroutine
+    go func() {
+        fmt.Println("Hello from goroutine")
+    }()
+    
+    // 等待（生产环境用 sync 或 channel）
+    time.Sleep(time.Millisecond)
+}
+
+// ==================== Channel 通信 ====================
+
+func channelBasics() {
+    // 无缓冲 channel（同步）
+    ch := make(chan int)
+    
+    go func() {
+        ch <- 42  // 发送（阻塞直到有人接收）
+    }()
+    
+    value := <-ch  // 接收（阻塞直到有数据）
+    
+    // 有缓冲 channel（异步）
+    buffered := make(chan int, 10)
+    buffered <- 1  // 不阻塞（直到缓冲满）
+    
+    // 关闭 channel
+    close(ch)
+    
+    // 检查是否关闭
+    v, ok := <-ch  // ok=false 表示已关闭
+    
+    // 遍历 channel
+    for v := range ch {
+        fmt.Println(v)
+    }
+}
+
+// ==================== Select 多路复用 ====================
+
+func selectExample() {
+    ch1 := make(chan string)
+    ch2 := make(chan string)
+    
+    go func() { ch1 <- "one" }()
+    go func() { ch2 <- "two" }()
+    
+    for i := 0; i < 2; i++ {
+        select {
+        case msg1 := <-ch1:
+            fmt.Println(msg1)
+        case msg2 := <-ch2:
+            fmt.Println(msg2)
+        case <-time.After(time.Second):  // 超时
+            fmt.Println("timeout")
+        default:  // 非阻塞
+            fmt.Println("no message")
+        }
+    }
+}
+
+// ==================== WaitGroup 等待完成 ====================
+
+func waitGroupExample() {
+    var wg sync.WaitGroup
+    
+    for i := 0; i < 5; i++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            fmt.Printf("Worker %d\n", id)
+        }(i)
+    }
+    
+    wg.Wait()  // 等待所有 goroutine 完成
+}
+
+// ==================== 工作池模式 ====================
+
+func workerPool() {
+    jobs := make(chan int, 100)
+    results := make(chan int, 100)
+    
+    // 启动 3 个 worker
+    for w := 0; w < 3; w++ {
+        go func(id int) {
+            for job := range jobs {
+                results <- job * 2  // 处理任务
+            }
+        }(w)
+    }
+    
+    // 发送任务
+    for j := 0; j < 10; j++ {
+        jobs <- j
+    }
+    close(jobs)
+    
+    // 收集结果
+    for r := 0; r < 10; r++ {
+        fmt.Println(<-results)
+    }
+}
+
+// ==================== Context 取消与超时 ====================
+
+func contextExample() {
+    // 带超时的 context
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    
+    // 带取消的 context
+    ctx, cancel = context.WithCancel(context.Background())
+    
+    go func() {
+        select {
+        case <-ctx.Done():
+            fmt.Println("cancelled:", ctx.Err())
+            return
+        case <-time.After(10 * time.Second):
+            fmt.Println("completed")
+        }
+    }()
+    
+    time.Sleep(time.Second)
+    cancel()  // 取消
+}
+
+// ==================== Mutex 互斥锁 ====================
+
+type SafeCounter struct {
+    mu    sync.Mutex
+    value int
+}
+
+func (c *SafeCounter) Inc() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.value++
+}
+
+func (c *SafeCounter) Value() int {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    return c.value
+}
+
+// RWMutex 读写锁
+type SafeCache struct {
+    mu    sync.RWMutex
+    items map[string]string
+}
+
+func (c *SafeCache) Get(key string) string {
+    c.mu.RLock()  // 读锁（多个读可并行）
+    defer c.mu.RUnlock()
+    return c.items[key]
+}
+
+func (c *SafeCache) Set(key, value string) {
+    c.mu.Lock()  // 写锁（独占）
+    defer c.mu.Unlock()
+    c.items[key] = value
+}
+
+// ==================== 原子操作 ====================
+
+import "sync/atomic"
+
+var counter int64
+
+func atomicExample() {
+    atomic.AddInt64(&counter, 1)
+    atomic.LoadInt64(&counter)
+    atomic.StoreInt64(&counter, 100)
+    atomic.CompareAndSwapInt64(&counter, 100, 200)
+}
+
+// ==================== Once 只执行一次 ====================
+
+var once sync.Once
+var instance *Database
+
+func GetInstance() *Database {
+    once.Do(func() {
+        instance = &Database{}
+    })
+    return instance
+}
+
+// ==================== errgroup 错误处理 ====================
+
+import "golang.org/x/sync/errgroup"
+
+func errgroupExample() error {
+    g, ctx := errgroup.WithContext(context.Background())
+    
+    g.Go(func() error {
+        return fetchData1(ctx)
+    })
+    
+    g.Go(func() error {
+        return fetchData2(ctx)
+    })
+    
+    // 等待所有完成，返回第一个错误
+    return g.Wait()
+}
+```
+
+### Rust 异步编程
+
+```rust
+use tokio;
+use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// ==================== 基础 async/await ====================
+
+async fn fetch_user(id: u32) -> Result<User, Error> {
+    // 异步操作
+    let response = reqwest::get(&format!("/api/users/{}", id)).await?;
+    response.json().await
+}
+
+// 运行异步函数
+#[tokio::main]
+async fn main() {
+    let user = fetch_user(1).await.unwrap();
+}
+
+// ==================== 并行执行 ====================
+
+use futures::future::{join, join_all, try_join, try_join_all, select};
+
+async fn parallel_tasks() {
+    // join! - 等待全部完成
+    let (user, posts) = tokio::join!(
+        fetch_user(1),
+        fetch_posts(1)
+    );
+    
+    // try_join! - 任一失败则返回错误
+    let result = tokio::try_join!(
+        fetch_user(1),
+        fetch_posts(1)
+    );
+    
+    // join_all - 动态数量的 futures
+    let users = join_all(
+        (1..10).map(|id| fetch_user(id))
+    ).await;
+    
+    // select! - 第一个完成的
+    tokio::select! {
+        user = fetch_user(1) => println!("user: {:?}", user),
+        posts = fetch_posts(1) => println!("posts: {:?}", posts),
+    }
+}
+
+// ==================== 超时控制 ====================
+
+use tokio::time::{timeout, Duration};
+
+async fn with_timeout() {
+    match timeout(Duration::from_secs(5), fetch_user(1)).await {
+        Ok(result) => println!("成功: {:?}", result),
+        Err(_) => println!("超时"),
+    }
+}
+
+// ==================== 异步 Stream ====================
+
+use futures::stream::{self, StreamExt};
+use tokio_stream::wrappers::IntervalStream;
+
+async fn stream_example() {
+    // 从迭代器创建 stream
+    let mut stream = stream::iter(vec![1, 2, 3]);
+    while let Some(value) = stream.next().await {
+        println!("{}", value);
+    }
+    
+    // 定时器 stream
+    let interval = tokio::time::interval(Duration::from_secs(1));
+    let mut stream = IntervalStream::new(interval).take(5);
+    while let Some(_) = stream.next().await {
+        println!("tick");
+    }
+    
+    // 并发处理 stream
+    let results: Vec<_> = stream::iter(urls)
+        .map(|url| fetch(url))
+        .buffer_unordered(10)  // 最多 10 个并发
+        .collect()
+        .await;
+}
+
+// ==================== Spawn 任务 ====================
+
+async fn spawn_tasks() {
+    // spawn 独立任务
+    let handle = tokio::spawn(async {
+        fetch_user(1).await
+    });
+    
+    // 等待任务完成
+    let result = handle.await.unwrap();
+    
+    // spawn_blocking (CPU 密集型)
+    let result = tokio::task::spawn_blocking(|| {
+        heavy_computation()
+    }).await.unwrap();
+}
+
+// ==================== Channel ====================
+
+use tokio::sync::{mpsc, oneshot, broadcast, watch};
+
+async fn channel_examples() {
+    // mpsc - 多生产者单消费者
+    let (tx, mut rx) = mpsc::channel::<i32>(100);
+    
+    tokio::spawn(async move {
+        tx.send(42).await.unwrap();
+    });
+    
+    while let Some(value) = rx.recv().await {
+        println!("{}", value);
+    }
+    
+    // oneshot - 单次发送
+    let (tx, rx) = oneshot::channel::<String>();
+    tx.send("hello".to_string()).unwrap();
+    let value = rx.await.unwrap();
+    
+    // broadcast - 多消费者
+    let (tx, _) = broadcast::channel::<i32>(16);
+    let mut rx1 = tx.subscribe();
+    let mut rx2 = tx.subscribe();
+    
+    tx.send(1).unwrap();
+    
+    // watch - 最新值
+    let (tx, mut rx) = watch::channel("initial");
+    tx.send("updated").unwrap();
+    println!("{}", *rx.borrow());
+}
+
+// ==================== Mutex & RwLock ====================
+
+use tokio::sync::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
+
+async fn async_mutex_example() {
+    let data = Arc::new(AsyncMutex::new(0));
+    
+    let data_clone = Arc::clone(&data);
+    tokio::spawn(async move {
+        let mut lock = data_clone.lock().await;
+        *lock += 1;
+    });
+}
+
+// 同步 Mutex (短时间持有)
+fn sync_mutex_example() {
+    let counter = Arc::new(Mutex::new(0));
+    
+    let handles: Vec<_> = (0..10).map(|_| {
+        let counter = Arc::clone(&counter);
+        std::thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+            *num += 1;
+        })
+    }).collect();
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
+
+// ==================== Semaphore 信号量 ====================
+
+use tokio::sync::Semaphore;
+
+async fn semaphore_example() {
+    let semaphore = Arc::new(Semaphore::new(10));  // 最多 10 并发
+    
+    let permit = semaphore.acquire().await.unwrap();
+    // 执行受限操作
+    drop(permit);  // 释放许可
+}
+
+// ==================== 原子操作 ====================
+
+fn atomic_example() {
+    let counter = AtomicUsize::new(0);
+    
+    counter.fetch_add(1, Ordering::SeqCst);
+    counter.load(Ordering::SeqCst);
+    counter.store(100, Ordering::SeqCst);
+    counter.compare_exchange(100, 200, Ordering::SeqCst, Ordering::SeqCst);
+}
+
+// ==================== 线程 ====================
+
+use std::thread;
+
+fn thread_example() {
+    let handle = thread::spawn(|| {
+        println!("Hello from thread");
+        42
+    });
+    
+    let result = handle.join().unwrap();
+    
+    // 作用域线程 (可借用数据)
+    let data = vec![1, 2, 3];
+    thread::scope(|s| {
+        s.spawn(|| {
+            println!("{:?}", data);  // 可以借用 data
+        });
+    });
+}
+```
+
+### 并发模式对比总结
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 并发原语        │ Promise        │ coroutine      │ goroutine      │ Future         │
+│ 通信机制        │ 无内置         │ Queue          │ Channel        │ Channel        │
+│ 真正并行        │ Worker         │ multiprocessing│ 原生           │ 原生           │
+│ 共享状态        │ 无 (Worker隔离)│ Lock           │ Mutex/Channel  │ Arc<Mutex>     │
+│ 取消机制        │ AbortController│ CancelScope    │ Context        │ select!/drop   │
+│ 错误传播        │ Promise.all    │ gather         │ errgroup       │ try_join!      │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+---
+
+## ❌ 错误处理
+
+### 错误处理模型概览
+
+| 语言 | 主要模式 | 错误类型 | 特点 |
+|------|----------|----------|------|
+| TypeScript | 异常 + 可选链 | `Error` | try/catch，灵活但不强制 |
+| Python | 异常 | `Exception` | try/except，EAFP 风格 |
+| Go | 返回值 | `error` | 显式检查，无异常 |
+| Rust | Result/Option | `Result<T, E>` | 编译器强制处理 |
+
+### TypeScript 错误处理
+
+```typescript
+// ==================== 基础 try/catch ====================
+
+try {
+  const data = JSON.parse(invalidJson);
+} catch (error) {
+  if (error instanceof SyntaxError) {
+    console.error("JSON 解析错误:", error.message);
+  } else {
+    throw error;  // 重新抛出未知错误
+  }
+} finally {
+  cleanup();
+}
+
+// ==================== 自定义错误 ====================
+
+class ValidationError extends Error {
+  constructor(
+    message: string,
+    public field: string,
+    public code: string
+  ) {
+    super(message);
+    this.name = 'ValidationError';
+    Error.captureStackTrace(this, ValidationError);
+  }
+}
+
+throw new ValidationError("无效的邮箱", "email", "INVALID_EMAIL");
+
+// ==================== 类型安全的错误处理 ====================
+
+// Result 类型模式
+type Result<T, E = Error> = 
+  | { success: true; data: T }
+  | { success: false; error: E };
+
+function parseJSON<T>(json: string): Result<T> {
+  try {
+    return { success: true, data: JSON.parse(json) };
+  } catch (e) {
+    return { success: false, error: e as Error };
+  }
+}
+
+const result = parseJSON<User>('{"name":"John"}');
+if (result.success) {
+  console.log(result.data.name);
+} else {
+  console.error(result.error.message);
+}
+
+// ==================== 异步错误处理 ====================
+
+// async/await
+async function fetchData() {
+  try {
+    const response = await fetch('/api/data');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("获取数据失败:", error);
+    throw error;  // 或返回默认值
+  }
+}
+
+// Promise 链
+fetch('/api/data')
+  .then(res => res.json())
+  .catch(err => {
+    console.error(err);
+    return defaultData;
+  });
+
+// Promise.allSettled 处理部分失败
+const results = await Promise.allSettled([
+  fetchUser(1),
+  fetchUser(999)
+]);
+
+results.forEach((result, i) => {
+  if (result.status === 'fulfilled') {
+    console.log(`用户 ${i}:`, result.value);
+  } else {
+    console.error(`用户 ${i} 失败:`, result.reason);
+  }
+});
+
+// ==================== 可选链与空值合并 ====================
+
+// 可选链 (?.)
+const name = user?.profile?.name;
+const first = arr?.[0];
+const result = obj?.method?.();
+
+// 空值合并 (??)
+const value = input ?? defaultValue;  // 仅 null/undefined 时使用默认值
+const name = user.name ?? "Anonymous";
+
+// 组合使用
+const city = user?.address?.city ?? "Unknown";
+
+// ==================== 断言函数 ====================
+
+function assertNonNull<T>(
+  value: T | null | undefined,
+  message: string
+): asserts value is T {
+  if (value === null || value === undefined) {
+    throw new Error(message);
+  }
+}
+
+assertNonNull(user, "用户不存在");
+console.log(user.name);  // 类型收窄为非空
+
+// ==================== 错误边界 (React) ====================
+
+class ErrorBoundary extends React.Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    logError(error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <h1>出错了</h1>;
+    }
+    return this.props.children;
+  }
+}
+```
+
+### Python 错误处理
+
+```python
+# ==================== 基础 try/except ====================
+
+try:
+    result = risky_operation()
+except ValueError as e:
+    print(f"值错误: {e}")
+except (TypeError, KeyError) as e:  # 多个异常
+    print(f"类型或键错误: {e}")
+except Exception as e:  # 捕获所有异常
+    print(f"未知错误: {e}")
+    raise  # 重新抛出
+else:
+    print("没有异常时执行")
+finally:
+    cleanup()
+
+# ==================== 自定义异常 ====================
+
+class ValidationError(Exception):
+    def __init__(self, message: str, field: str, code: str):
+        super().__init__(message)
+        self.field = field
+        self.code = code
+
+class NotFoundError(Exception):
+    pass
+
+# 异常链
+try:
+    parse_config()
+except FileNotFoundError as e:
+    raise ConfigError("配置加载失败") from e
+
+# ==================== 上下文管理器 ====================
+
+# 自动资源清理
+with open('file.txt') as f:
+    content = f.read()  # 异常时也会自动关闭
+
+# 自定义上下文管理器
+from contextlib import contextmanager
+
+@contextmanager
+def managed_resource():
+    resource = acquire_resource()
+    try:
+        yield resource
+    finally:
+        release_resource(resource)
+
+with managed_resource() as r:
+    r.do_something()
+
+# suppress 忽略特定异常
+from contextlib import suppress
+
+with suppress(FileNotFoundError):
+    os.remove('file.txt')  # 文件不存在也不报错
+
+# ==================== 异常组 (Python 3.11+) ====================
+
+# ExceptionGroup 同时抛出多个异常
+errors = []
+for item in items:
+    try:
+        process(item)
+    except Exception as e:
+        errors.append(e)
+
+if errors:
+    raise ExceptionGroup("批量处理失败", errors)
+
+# 捕获异常组
+try:
+    process_batch()
+except* ValueError as eg:  # except* 语法
+    print(f"值错误: {eg.exceptions}")
+except* TypeError as eg:
+    print(f"类型错误: {eg.exceptions}")
+
+# ==================== 类型安全的错误处理 ====================
+
+from typing import TypeVar, Generic
+from dataclasses import dataclass
+
+T = TypeVar('T')
+E = TypeVar('E')
+
+@dataclass
+class Ok(Generic[T]):
+    value: T
+
+@dataclass  
+class Err(Generic[E]):
+    error: E
+
+Result = Ok[T] | Err[E]
+
+def divide(a: int, b: int) -> Result[float, str]:
+    if b == 0:
+        return Err("除数不能为零")
+    return Ok(a / b)
+
+result = divide(10, 0)
+match result:
+    case Ok(value):
+        print(f"结果: {value}")
+    case Err(error):
+        print(f"错误: {error}")
+
+# ==================== 断言 ====================
+
+assert condition, "条件不满足"  # 可用 -O 参数禁用
+
+# 运行时类型检查
+def process(data: list[int]) -> int:
+    if not isinstance(data, list):
+        raise TypeError(f"期望 list，得到 {type(data)}")
+    return sum(data)
+
+# ==================== 日志记录 ====================
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+try:
+    risky_operation()
+except Exception:
+    logger.exception("操作失败")  # 自动记录堆栈
+
+# ==================== 警告 ====================
+
+import warnings
+
+warnings.warn("这个函数已弃用", DeprecationWarning)
+
+# 将警告转为异常
+warnings.filterwarnings('error')
+```
+
+### Go 错误处理
+
+```go
+package main
+
+import (
+    "errors"
+    "fmt"
+    "log"
+)
+
+// ==================== 基础错误处理 ====================
+
+func divide(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, errors.New("除数不能为零")
+    }
+    return a / b, nil
+}
+
+func main() {
+    result, err := divide(10, 0)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(result)
+}
+
+// ==================== 自定义错误 ====================
+
+// 简单自定义错误
+type ValidationError struct {
+    Field   string
+    Message string
+}
+
+func (e *ValidationError) Error() string {
+    return fmt.Sprintf("%s: %s", e.Field, e.Message)
+}
+
+// 带错误码
+type AppError struct {
+    Code    int
+    Message string
+    Err     error  // 包装的原始错误
+}
+
+func (e *AppError) Error() string {
+    if e.Err != nil {
+        return fmt.Sprintf("[%d] %s: %v", e.Code, e.Message, e.Err)
+    }
+    return fmt.Sprintf("[%d] %s", e.Code, e.Message)
+}
+
+func (e *AppError) Unwrap() error {
+    return e.Err
+}
+
+// ==================== 错误包装 (Go 1.13+) ====================
+
+func readConfig() error {
+    data, err := os.ReadFile("config.json")
+    if err != nil {
+        return fmt.Errorf("读取配置失败: %w", err)  // %w 包装错误
+    }
+    return nil
+}
+
+// 检查错误链
+if errors.Is(err, os.ErrNotExist) {
+    fmt.Println("文件不存在")
+}
+
+// 提取特定错误类型
+var pathErr *os.PathError
+if errors.As(err, &pathErr) {
+    fmt.Println("路径:", pathErr.Path)
+}
+
+// ==================== 哨兵错误 ====================
+
+var (
+    ErrNotFound     = errors.New("not found")
+    ErrUnauthorized = errors.New("unauthorized")
+    ErrInternal     = errors.New("internal error")
+)
+
+func findUser(id int) (*User, error) {
+    if id <= 0 {
+        return nil, ErrNotFound
+    }
+    return &User{}, nil
+}
+
+// 使用
+_, err := findUser(-1)
+if errors.Is(err, ErrNotFound) {
+    // 处理未找到
+}
+
+// ==================== 多错误合并 (Go 1.20+) ====================
+
+func validateUser(u *User) error {
+    var errs []error
+    
+    if u.Name == "" {
+        errs = append(errs, errors.New("名称为空"))
+    }
+    if u.Email == "" {
+        errs = append(errs, errors.New("邮箱为空"))
+    }
+    
+    return errors.Join(errs...)  // 合并多个错误
+}
+
+// ==================== defer 资源清理 ====================
+
+func readFile(path string) ([]byte, error) {
+    f, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()  // 确保关闭
+    
+    return io.ReadAll(f)
+}
+
+// 带错误处理的 defer
+func writeFile(path string, data []byte) (err error) {
+    f, err := os.Create(path)
+    if err != nil {
+        return err
+    }
+    defer func() {
+        closeErr := f.Close()
+        if err == nil {
+            err = closeErr  // 只在没有其他错误时设置
+        }
+    }()
+    
+    _, err = f.Write(data)
+    return err
+}
+
+// ==================== panic 和 recover ====================
+
+func mayPanic() {
+    panic("something went wrong")
+}
+
+func safeCall() (err error) {
+    defer func() {
+        if r := recover(); r != nil {
+            err = fmt.Errorf("panic recovered: %v", r)
+        }
+    }()
+    
+    mayPanic()
+    return nil
+}
+
+// ==================== 错误处理模式 ====================
+
+// 提前返回模式
+func process(data []byte) error {
+    if len(data) == 0 {
+        return errors.New("空数据")
+    }
+    
+    parsed, err := parse(data)
+    if err != nil {
+        return fmt.Errorf("解析失败: %w", err)
+    }
+    
+    if err := validate(parsed); err != nil {
+        return fmt.Errorf("验证失败: %w", err)
+    }
+    
+    return save(parsed)
+}
+
+// 错误处理辅助函数
+func must[T any](v T, err error) T {
+    if err != nil {
+        panic(err)
+    }
+    return v
+}
+
+config := must(loadConfig())  // 失败直接 panic
+
+// ==================== 结构化日志 ====================
+
+import "log/slog"
+
+func handleRequest(r *Request) error {
+    logger := slog.With("request_id", r.ID)
+    
+    user, err := getUser(r.UserID)
+    if err != nil {
+        logger.Error("获取用户失败",
+            "user_id", r.UserID,
+            "error", err,
+        )
+        return err
+    }
+    
+    logger.Info("请求处理成功", "user", user.Name)
+    return nil
+}
+```
+
+### Rust 错误处理
+
+```rust
+use std::error::Error;
+use std::fmt;
+use std::fs::File;
+use std::io::{self, Read};
+
+// ==================== Result 基础 ====================
+
+fn divide(a: f64, b: f64) -> Result<f64, String> {
+    if b == 0.0 {
+        Err("除数不能为零".to_string())
+    } else {
+        Ok(a / b)
+    }
+}
+
+fn main() {
+    match divide(10.0, 0.0) {
+        Ok(result) => println!("结果: {}", result),
+        Err(e) => println!("错误: {}", e),
+    }
+}
+
+// ==================== Option 类型 ====================
+
+fn find_user(id: u32) -> Option<User> {
+    if id > 0 {
+        Some(User { id, name: "John".to_string() })
+    } else {
+        None
+    }
+}
+
+// Option 方法
+let user = find_user(1);
+let name = user.map(|u| u.name);           // Option<String>
+let name = user.and_then(|u| u.nickname);  // 链式 Option
+let name = user.unwrap_or_default();       // 默认值
+let name = user.unwrap_or_else(|| get_default()); // 惰性默认值
+let name = user.ok_or("用户不存在")?;      // 转为 Result
+
+// if let / while let
+if let Some(user) = find_user(1) {
+    println!("{}", user.name);
+}
+
+// ==================== ? 操作符 ====================
+
+fn read_file(path: &str) -> Result<String, io::Error> {
+    let mut file = File::open(path)?;  // 错误自动返回
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
+// 链式调用
+fn read_config() -> Result<Config, io::Error> {
+    let contents = std::fs::read_to_string("config.json")?;
+    let config: Config = serde_json::from_str(&contents)?;
+    Ok(config)
+}
+
+// ==================== 自定义错误 ====================
+
+#[derive(Debug)]
+enum AppError {
+    NotFound(String),
+    Validation { field: String, message: String },
+    Database(sqlx::Error),
+    Io(io::Error),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::NotFound(msg) => write!(f, "未找到: {}", msg),
+            AppError::Validation { field, message } => 
+                write!(f, "{}: {}", field, message),
+            AppError::Database(e) => write!(f, "数据库错误: {}", e),
+            AppError::Io(e) => write!(f, "IO 错误: {}", e),
+        }
+    }
+}
+
+impl Error for AppError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            AppError::Database(e) => Some(e),
+            AppError::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+// From trait 实现自动转换
+impl From<io::Error> for AppError {
+    fn from(err: io::Error) -> Self {
+        AppError::Io(err)
+    }
+}
+
+// ==================== thiserror (推荐) ====================
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+enum MyError {
+    #[error("未找到: {0}")]
+    NotFound(String),
+    
+    #[error("验证错误 - {field}: {message}")]
+    Validation { field: String, message: String },
+    
+    #[error("IO 错误")]
+    Io(#[from] io::Error),
+    
+    #[error("JSON 错误")]
+    Json(#[from] serde_json::Error),
+}
+
+// ==================== anyhow (应用程序) ====================
+
+use anyhow::{Context, Result, bail, ensure};
+
+fn load_config() -> Result<Config> {
+    let contents = std::fs::read_to_string("config.json")
+        .context("无法读取配置文件")?;
+    
+    let config: Config = serde_json::from_str(&contents)
+        .context("配置文件格式错误")?;
+    
+    // bail! 宏快速返回错误
+    if config.name.is_empty() {
+        bail!("配置名称不能为空");
+    }
+    
+    // ensure! 宏断言
+    ensure!(config.port > 0, "端口必须大于 0");
+    
+    Ok(config)
+}
+
+// 使用 anyhow::Result
+fn main() -> Result<()> {
+    let config = load_config()?;
+    println!("{:?}", config);
+    Ok(())
+}
+
+// ==================== Result 方法 ====================
+
+let result: Result<i32, &str> = Ok(42);
+
+// 转换
+result.map(|v| v * 2);           // Ok(84)
+result.map_err(|e| e.to_string()); // 转换错误类型
+result.and_then(|v| if v > 0 { Ok(v) } else { Err("负数") });
+
+// 默认值
+result.unwrap_or(0);
+result.unwrap_or_default();
+result.unwrap_or_else(|_| calculate_default());
+
+// 危险操作 (仅在确定不会失败时使用)
+result.unwrap();   // 失败时 panic
+result.expect("错误消息");  // 带消息的 panic
+
+// 检查
+result.is_ok();
+result.is_err();
+
+// 转换为 Option
+result.ok();   // Option<T>
+result.err();  // Option<E>
+
+// ==================== 模式匹配 ====================
+
+fn handle_result(r: Result<i32, AppError>) {
+    match r {
+        Ok(v) if v > 100 => println!("大值: {}", v),
+        Ok(v) => println!("值: {}", v),
+        Err(AppError::NotFound(msg)) => println!("未找到: {}", msg),
+        Err(e) => println!("其他错误: {}", e),
+    }
+}
+
+// let else (Rust 1.65+)
+fn process(input: Option<String>) {
+    let Some(value) = input else {
+        println!("没有输入");
+        return;
+    };
+    println!("处理: {}", value);
+}
+
+// ==================== panic 处理 ====================
+
+// 设置 panic 钩子
+std::panic::set_hook(Box::new(|info| {
+    eprintln!("Panic: {:?}", info);
+}));
+
+// 捕获 panic
+let result = std::panic::catch_unwind(|| {
+    panic!("出错了");
+});
+
+match result {
+    Ok(_) => println!("正常"),
+    Err(_) => println!("捕获到 panic"),
+}
+
+// ==================== 错误传播最佳实践 ====================
+
+// 库代码: 使用具体错误类型
+pub fn library_function() -> Result<Data, LibraryError> {
+    // ...
+}
+
+// 应用代码: 使用 anyhow
+fn app_function() -> anyhow::Result<()> {
+    let data = library_function()
+        .context("调用库函数失败")?;
+    Ok(())
+}
+```
+
+### 错误处理对比总结
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 主要机制        │ try/catch      │ try/except     │ 返回 error     │ Result<T,E>    │
+│ 强制处理        │ ❌             │ ❌             │ ❌ (可忽略)    │ ✅ (编译器)    │
+│ 错误传播        │ throw          │ raise          │ return err     │ ?              │
+│ 空值处理        │ ?. / ??        │ or / None      │ nil 检查       │ Option<T>      │
+│ 异常类型        │ Error 类       │ Exception 类   │ error 接口     │ Error trait    │
+│ 错误链          │ cause          │ from           │ %w / Unwrap    │ source()       │
+│ 资源清理        │ finally        │ finally/with   │ defer          │ Drop trait     │
+│ panic 恢复      │ 无             │ 无 (异常即可)  │ recover        │ catch_unwind   │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 最佳实践建议
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 业务错误 | 自定义 Error 类 | 自定义 Exception | 自定义 error | thiserror |
+| 应用错误 | Result 模式 | 异常 | 错误包装 | anyhow |
+| 验证错误 | Zod/Yup | Pydantic | 结构体验证 | validator |
+| 可恢复错误 | try/catch | try/except | if err != nil | Result + ? |
+| 不可恢复 | throw | raise | panic | panic! |
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
