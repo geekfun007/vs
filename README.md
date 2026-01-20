@@ -3220,6 +3220,1211 @@ fn app_function() -> anyhow::Result<()> {
 
 ---
 
+## 📦 模块化系统
+
+### 模块系统概览
+
+| 语言 | 模块单位 | 导入关键字 | 可见性控制 | 特点 |
+|------|----------|------------|------------|------|
+| TypeScript | 文件 | `import/export` | export 显式导出 | ES Modules |
+| Python | 文件/目录 | `import/from` | `_` 前缀约定 | 包即目录 |
+| Go | 目录 | `import` | 大小写控制 | 简单直接 |
+| Rust | 文件/mod | `use` | `pub` 关键字 | 精细控制 |
+
+### TypeScript 模块系统
+
+```typescript
+// ==================== 导出 ====================
+
+// 命名导出 (named export)
+export const PI = 3.14159;
+export function add(a: number, b: number): number {
+  return a + b;
+}
+export class Calculator {
+  // ...
+}
+export interface Config {
+  name: string;
+}
+export type Result<T> = { ok: true; value: T } | { ok: false; error: Error };
+
+// 默认导出 (default export)
+export default class App {
+  // ...
+}
+
+// 重新导出
+export { foo, bar } from './other';
+export * from './utils';                    // 导出所有
+export * as utils from './utils';           // 命名空间导出
+export { default as Helper } from './helper';
+
+// ==================== 导入 ====================
+
+// 命名导入
+import { add, PI } from './math';
+import { add as addition } from './math';   // 重命名
+import type { Config } from './config';     // 仅类型导入
+
+// 默认导入
+import App from './App';
+import App, { helper } from './App';        // 混合导入
+
+// 命名空间导入
+import * as math from './math';
+math.add(1, 2);
+
+// 动态导入 (代码分割)
+const module = await import('./heavy-module');
+module.doSomething();
+
+// 条件导入
+if (condition) {
+  const { feature } = await import('./feature');
+}
+
+// ==================== 项目结构 ====================
+
+/*
+src/
+├── index.ts              # 入口文件
+├── types/
+│   └── index.ts          # 类型定义
+├── utils/
+│   ├── index.ts          # 桶文件 (barrel)
+│   ├── string.ts
+│   └── date.ts
+├── services/
+│   ├── index.ts
+│   └── api.service.ts
+└── components/
+    ├── index.ts
+    └── Button.tsx
+*/
+
+// utils/index.ts (桶文件)
+export * from './string';
+export * from './date';
+export { default as format } from './format';
+
+// 使用
+import { formatDate, capitalize } from '@/utils';
+
+// ==================== 路径别名 (tsconfig.json) ====================
+
+/*
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+      "@utils/*": ["src/utils/*"]
+    }
+  }
+}
+*/
+
+import { Button } from '@components/Button';
+
+// ==================== 模块声明 ====================
+
+// 声明模块类型 (*.d.ts)
+declare module '*.css' {
+  const content: { [className: string]: string };
+  export default content;
+}
+
+declare module '*.svg' {
+  const content: React.FC<React.SVGProps<SVGSVGElement>>;
+  export default content;
+}
+
+// 扩展已有模块
+declare module 'express' {
+  interface Request {
+    user?: User;
+  }
+}
+```
+
+### Python 模块系统
+
+```python
+# ==================== 导出 ====================
+
+# Python 没有显式导出，所有顶层定义默认可导入
+# 使用 __all__ 控制 from module import * 的行为
+
+# math_utils.py
+__all__ = ['add', 'subtract', 'PI']  # 限制 * 导入的内容
+
+PI = 3.14159
+
+def add(a, b):
+    return a + b
+
+def subtract(a, b):
+    return a - b
+
+def _private_helper():  # 下划线前缀表示私有（约定）
+    pass
+
+# ==================== 导入 ====================
+
+# 导入模块
+import math
+math.sqrt(4)
+
+# 导入特定对象
+from math import sqrt, pi
+from math import sqrt as square_root  # 重命名
+
+# 导入所有 (不推荐)
+from math import *
+
+# 相对导入 (包内)
+from . import sibling_module
+from .sibling import function
+from .. import parent_module
+from ..parent import function
+
+# 条件导入
+try:
+    import ujson as json  # 优先使用更快的实现
+except ImportError:
+    import json
+
+# 延迟导入 (避免循环依赖)
+def my_function():
+    from heavy_module import heavy_function
+    return heavy_function()
+
+# 类型检查时导入 (避免运行时导入)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from expensive_module import ExpensiveClass
+
+# ==================== 包结构 ====================
+
+"""
+mypackage/
+├── __init__.py           # 包初始化（必需）
+├── __main__.py           # python -m mypackage 入口
+├── core/
+│   ├── __init__.py
+│   ├── engine.py
+│   └── utils.py
+├── api/
+│   ├── __init__.py
+│   └── endpoints.py
+└── models/
+    ├── __init__.py
+    └── user.py
+"""
+
+# mypackage/__init__.py
+from .core.engine import Engine
+from .core.utils import helper
+from .models.user import User
+
+__all__ = ['Engine', 'helper', 'User']
+__version__ = '1.0.0'
+
+# 使用
+from mypackage import Engine, User
+
+# ==================== 命名空间包 (无 __init__.py) ====================
+
+"""
+Python 3.3+ 支持命名空间包，允许包分布在多个目录
+
+site-packages/
+├── mynamespace/
+│   └── subpkg1/
+│       └── __init__.py
+└── mynamespace/          # 另一个位置
+    └── subpkg2/
+        └── __init__.py
+
+两个子包合并为 mynamespace
+"""
+
+# ==================== 模块搜索路径 ====================
+
+import sys
+
+# 查看搜索路径
+print(sys.path)
+
+# 添加搜索路径
+sys.path.insert(0, '/path/to/modules')
+
+# 使用 PYTHONPATH 环境变量
+# export PYTHONPATH=/path/to/modules:$PYTHONPATH
+
+# ==================== 模块属性 ====================
+
+# 模块名
+__name__      # 'mymodule' 或 '__main__'
+__file__      # 模块文件路径
+__package__   # 包名
+__doc__       # 模块文档字符串
+
+# 主模块判断
+if __name__ == '__main__':
+    main()
+
+# ==================== importlib 动态导入 ====================
+
+import importlib
+
+# 动态导入模块
+module = importlib.import_module('mypackage.submodule')
+
+# 重新加载模块 (开发时有用)
+importlib.reload(module)
+
+# 导入插件
+def load_plugins(plugin_names):
+    plugins = []
+    for name in plugin_names:
+        module = importlib.import_module(f'plugins.{name}')
+        plugins.append(module.Plugin())
+    return plugins
+```
+
+### Go 模块系统
+
+```go
+// ==================== 包声明与导入 ====================
+
+// 每个 Go 文件必须声明包名
+package main
+
+import (
+    // 标准库
+    "fmt"
+    "net/http"
+    
+    // 第三方包
+    "github.com/gin-gonic/gin"
+    
+    // 本地包
+    "myproject/internal/auth"
+    "myproject/pkg/utils"
+    
+    // 别名导入
+    log "github.com/sirupsen/logrus"
+    
+    // 匿名导入 (仅执行 init)
+    _ "github.com/lib/pq"
+    
+    // 点导入 (不推荐)
+    . "math"
+)
+
+// ==================== 可见性规则 ====================
+
+// 大写开头 = 公开 (exported)
+func PublicFunction() {}
+type PublicStruct struct {
+    PublicField  string  // 公开字段
+    privateField string  // 私有字段
+}
+const PublicConst = 1
+var PublicVar = "hello"
+
+// 小写开头 = 私有 (unexported)
+func privateFunction() {}
+type privateStruct struct{}
+const privateConst = 2
+var privateVar = "secret"
+
+// ==================== 项目结构 ====================
+
+/*
+myproject/
+├── go.mod                # 模块定义
+├── go.sum                # 依赖校验
+├── main.go               # 入口点
+├── cmd/                  # 可执行程序
+│   ├── server/
+│   │   └── main.go
+│   └── cli/
+│       └── main.go
+├── internal/             # 私有包 (不可被外部导入)
+│   ├── auth/
+│   │   └── auth.go
+│   └── database/
+│       └── db.go
+├── pkg/                  # 公开包 (可被外部导入)
+│   └── utils/
+│       └── utils.go
+├── api/                  # API 定义
+│   └── handlers.go
+└── configs/              # 配置文件
+    └── config.yaml
+*/
+
+// ==================== init 函数 ====================
+
+package database
+
+import "database/sql"
+
+var db *sql.DB
+
+// init 在包导入时自动执行
+// 可以有多个 init，按声明顺序执行
+func init() {
+    var err error
+    db, err = sql.Open("postgres", connStr)
+    if err != nil {
+        panic(err)
+    }
+}
+
+// 执行顺序: 导入包 → 包级变量初始化 → init() → main()
+
+// ==================== internal 包 ====================
+
+/*
+internal 目录下的包只能被同一模块导入
+
+myproject/
+├── internal/
+│   └── secret/         # 只有 myproject 内部可用
+│       └── secret.go
+└── pkg/
+    └── public/         # 任何人都可导入
+        └── public.go
+
+外部项目无法导入:
+import "myproject/internal/secret"  // 编译错误
+*/
+
+// ==================== 同一目录多文件 ====================
+
+// 同一目录下的所有 .go 文件属于同一个包
+// utils/string.go
+package utils
+
+func Capitalize(s string) string { ... }
+
+// utils/number.go  
+package utils
+
+func Abs(n int) int { ... }
+
+// 使用时整个包一起导入
+import "myproject/pkg/utils"
+utils.Capitalize("hello")
+utils.Abs(-5)
+
+// ==================== 构建标签 ====================
+
+// 条件编译
+
+//go:build linux
+// +build linux
+
+package main
+// 仅在 Linux 上编译
+
+//go:build !windows
+// +build !windows
+
+package main
+// 除 Windows 外的所有平台
+
+// 文件名约定
+// file_linux.go    - 仅 Linux
+// file_windows.go  - 仅 Windows
+// file_test.go     - 仅测试
+
+// ==================== 嵌入文件 ====================
+
+import "embed"
+
+//go:embed templates/*
+var templates embed.FS
+
+//go:embed config.json
+var configData []byte
+
+//go:embed version.txt
+var version string
+```
+
+### Rust 模块系统
+
+```rust
+// ==================== 模块声明 ====================
+
+// 方式 1: 内联模块
+mod math {
+    pub const PI: f64 = 3.14159;
+    
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+    
+    fn private_helper() {
+        // 私有函数
+    }
+    
+    // 嵌套模块
+    pub mod advanced {
+        pub fn complex_calc() {}
+    }
+}
+
+// 方式 2: 单独文件
+// 在 main.rs 或 lib.rs 中声明
+mod utils;      // 加载 utils.rs 或 utils/mod.rs
+mod database;   // 加载 database.rs 或 database/mod.rs
+
+// ==================== 可见性控制 ====================
+
+mod outer {
+    pub fn public_fn() {}           // 完全公开
+    fn private_fn() {}              // 私有 (默认)
+    
+    pub(crate) fn crate_fn() {}     // crate 内可见
+    pub(super) fn parent_fn() {}    // 父模块可见
+    pub(in crate::path) fn path_fn() {} // 指定路径可见
+    
+    pub struct Person {
+        pub name: String,           // 公开字段
+        age: u32,                   // 私有字段
+        pub(crate) id: u64,         // crate 内可见
+    }
+    
+    impl Person {
+        // 公开构造函数 (因为有私有字段)
+        pub fn new(name: String, age: u32) -> Self {
+            Self { name, age, id: 0 }
+        }
+    }
+}
+
+// ==================== use 导入 ====================
+
+// 绝对路径
+use crate::math::add;
+use crate::math::PI;
+
+// 相对路径
+use self::utils::helper;
+use super::parent_module;
+
+// 多个导入
+use std::collections::{HashMap, HashSet, BTreeMap};
+use std::io::{self, Read, Write};  // self = std::io
+
+// 重命名
+use std::io::Result as IoResult;
+
+// 通配符 (不推荐)
+use std::collections::*;
+
+// 重新导出
+pub use self::internal::PublicApi;
+pub use crate::utils::*;
+
+// ==================== 项目结构 ====================
+
+/*
+my_project/
+├── Cargo.toml            # 项目配置
+├── Cargo.lock            # 依赖锁定
+├── src/
+│   ├── main.rs           # 二进制入口 (bin crate)
+│   ├── lib.rs            # 库入口 (lib crate)
+│   ├── utils.rs          # 模块文件
+│   ├── utils/            # 或模块目录
+│   │   ├── mod.rs        # 模块入口
+│   │   ├── string.rs
+│   │   └── date.rs
+│   └── models/
+│       ├── mod.rs
+│       └── user.rs
+├── tests/                # 集成测试
+│   └── integration_test.rs
+├── benches/              # 基准测试
+│   └── benchmark.rs
+└── examples/             # 示例
+    └── example.rs
+*/
+
+// ==================== mod.rs vs 文件名.rs ====================
+
+// Rust 2018+ 推荐: 使用文件名.rs 代替 mod.rs
+
+// 旧方式 (Rust 2015)
+// utils/mod.rs
+
+// 新方式 (Rust 2018+)
+// utils.rs          - 模块声明
+// utils/string.rs   - 子模块
+
+// src/utils.rs
+pub mod string;  // 加载 utils/string.rs
+pub mod date;    // 加载 utils/date.rs
+
+// ==================== lib.rs 组织 ====================
+
+// src/lib.rs
+pub mod api;
+pub mod models;
+pub mod utils;
+
+// 重新导出常用类型
+pub use api::Client;
+pub use models::{User, Post};
+
+// prelude 模式
+pub mod prelude {
+    pub use crate::api::Client;
+    pub use crate::models::*;
+    pub use crate::utils::*;
+}
+
+// 用户使用
+use my_crate::prelude::*;
+
+// ==================== 条件编译 ====================
+
+#[cfg(target_os = "linux")]
+mod linux_specific {
+    pub fn platform_fn() {}
+}
+
+#[cfg(target_os = "windows")]
+mod windows_specific {
+    pub fn platform_fn() {}
+}
+
+#[cfg(feature = "advanced")]
+pub mod advanced_features {
+    // 仅在启用 feature 时编译
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_something() {}
+}
+
+// ==================== 工作空间 (Workspace) ====================
+
+/*
+workspace/
+├── Cargo.toml           # 工作空间配置
+├── crates/
+│   ├── core/
+│   │   ├── Cargo.toml
+│   │   └── src/lib.rs
+│   ├── cli/
+│   │   ├── Cargo.toml
+│   │   └── src/main.rs
+│   └── web/
+│       ├── Cargo.toml
+│       └── src/main.rs
+└── shared/
+    ├── Cargo.toml
+    └── src/lib.rs
+*/
+
+// workspace/Cargo.toml
+/*
+[workspace]
+members = [
+    "crates/core",
+    "crates/cli",
+    "crates/web",
+    "shared",
+]
+
+[workspace.dependencies]
+serde = "1.0"
+tokio = "1.0"
+*/
+
+// crates/cli/Cargo.toml
+/*
+[dependencies]
+core = { path = "../core" }
+shared = { path = "../../shared" }
+serde = { workspace = true }
+*/
+```
+
+### 模块系统对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 模块单位        │ 文件           │ 文件/目录      │ 目录           │ 文件/mod      │
+│ 导入语法        │ import/export  │ import/from    │ import         │ use            │
+│ 默认可见性      │ 私有           │ 公开           │ 私有(小写)     │ 私有           │
+│ 公开标记        │ export         │ 无 (__all__)   │ 大写首字母     │ pub            │
+│ 循环依赖        │ 允许           │ 允许(需注意)   │ 不允许         │ 不允许         │
+│ 动态导入        │ import()       │ importlib      │ 不支持         │ 不支持         │
+│ 类型导入        │ import type    │ TYPE_CHECKING  │ 不适用         │ 自动           │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+---
+
+## 📦 包管理
+
+### 包管理器概览
+
+| 语言 | 包管理器 | 配置文件 | 锁文件 | 仓库 |
+|------|----------|----------|--------|------|
+| TypeScript | npm/yarn/pnpm | package.json | package-lock.json | npmjs.com |
+| Python | pip/poetry/uv | requirements.txt/pyproject.toml | poetry.lock | pypi.org |
+| Go | go mod | go.mod | go.sum | proxy.golang.org |
+| Rust | cargo | Cargo.toml | Cargo.lock | crates.io |
+
+### TypeScript/JavaScript 包管理
+
+```bash
+# ==================== npm ====================
+
+# 初始化项目
+npm init -y
+
+# 安装依赖
+npm install express                    # 生产依赖
+npm install -D typescript              # 开发依赖
+npm install -g ts-node                 # 全局安装
+
+# 版本控制
+npm install lodash@4.17.21             # 精确版本
+npm install lodash@^4.17.0             # 兼容版本
+npm install lodash@~4.17.0             # 补丁版本
+
+# 其他命令
+npm update                             # 更新依赖
+npm outdated                           # 检查过时包
+npm audit                              # 安全审计
+npm audit fix                          # 自动修复
+npm run build                          # 运行脚本
+npm exec ts-node                       # 执行包命令
+
+# ==================== yarn ====================
+
+yarn init -y
+yarn add express
+yarn add -D typescript
+yarn global add ts-node
+yarn upgrade
+yarn upgrade-interactive
+
+# ==================== pnpm (推荐) ====================
+
+pnpm init
+pnpm add express
+pnpm add -D typescript
+pnpm add -g ts-node
+pnpm update
+pnpm store prune                       # 清理存储
+```
+
+```json
+// package.json
+{
+  "name": "my-project",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/",
+    "prepare": "husky install"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  },
+  "optionalDependencies": {
+    "fsevents": "^2.3.0"
+  }
+}
+```
+
+```typescript
+// ==================== Monorepo (pnpm workspace) ====================
+
+/*
+my-monorepo/
+├── pnpm-workspace.yaml
+├── package.json
+├── packages/
+│   ├── core/
+│   │   └── package.json
+│   ├── cli/
+│   │   └── package.json
+│   └── web/
+│       └── package.json
+└── apps/
+    └── api/
+        └── package.json
+*/
+
+// pnpm-workspace.yaml
+/*
+packages:
+  - 'packages/*'
+  - 'apps/*'
+*/
+
+// packages/cli/package.json
+/*
+{
+  "dependencies": {
+    "@my-org/core": "workspace:*"
+  }
+}
+*/
+
+// 工作空间命令
+// pnpm -F @my-org/cli add lodash      # 给特定包添加依赖
+// pnpm -r build                        # 所有包执行构建
+```
+
+### Python 包管理
+
+```bash
+# ==================== pip ====================
+
+# 安装包
+pip install requests
+pip install requests==2.28.0           # 精确版本
+pip install "requests>=2.28.0,<3.0.0"  # 版本范围
+pip install -e .                       # 可编辑安装
+pip install -r requirements.txt        # 从文件安装
+
+# 导出依赖
+pip freeze > requirements.txt
+
+# 升级
+pip install --upgrade requests
+pip install --upgrade pip
+
+# 卸载
+pip uninstall requests
+
+# ==================== 虚拟环境 ====================
+
+# venv (内置)
+python -m venv .venv
+source .venv/bin/activate              # Linux/macOS
+.venv\Scripts\activate                 # Windows
+deactivate
+
+# ==================== poetry (推荐) ====================
+
+# 安装 poetry
+curl -sSL https://install.python-poetry.org | python3 -
+
+# 创建项目
+poetry new my-project
+poetry init                            # 交互式初始化
+
+# 依赖管理
+poetry add requests
+poetry add --group dev pytest          # 开发依赖
+poetry remove requests
+poetry update
+
+# 运行
+poetry run python main.py
+poetry shell                           # 进入虚拟环境
+
+# 构建与发布
+poetry build
+poetry publish
+
+# ==================== uv (新一代，超快) ====================
+
+# 安装
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 项目管理
+uv init my-project
+uv add requests
+uv add --dev pytest
+uv remove requests
+uv sync                                # 同步依赖
+uv run python main.py
+uv pip compile requirements.in -o requirements.txt
+```
+
+```toml
+# pyproject.toml (现代标准)
+[project]
+name = "my-project"
+version = "1.0.0"
+description = "My awesome project"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Author", email = "author@example.com"}
+]
+dependencies = [
+    "requests>=2.28.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+my-cli = "my_project.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Poetry 特定配置
+[tool.poetry]
+name = "my-project"
+version = "1.0.0"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "^2.28.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+```
+
+```txt
+# requirements.txt (传统方式)
+requests==2.28.0
+pydantic>=2.0.0,<3.0.0
+numpy~=1.24.0              # 兼容版本
+
+# requirements-dev.txt
+-r requirements.txt        # 包含基础依赖
+pytest==7.4.0
+mypy==1.5.0
+```
+
+### Go 包管理
+
+```bash
+# ==================== go mod ====================
+
+# 初始化模块
+go mod init github.com/user/myproject
+
+# 添加依赖 (自动)
+go get github.com/gin-gonic/gin
+go get github.com/gin-gonic/gin@v1.9.0   # 指定版本
+go get github.com/gin-gonic/gin@latest
+
+# 整理依赖
+go mod tidy                              # 添加缺失/移除未用
+
+# 下载依赖
+go mod download
+
+# 更新依赖
+go get -u ./...                          # 更新所有
+go get -u github.com/gin-gonic/gin       # 更新特定包
+
+# 依赖图
+go mod graph
+
+# 验证
+go mod verify
+
+# vendor 模式
+go mod vendor
+go build -mod=vendor
+
+# ==================== 工作空间 (Go 1.18+) ====================
+
+# 创建工作空间
+go work init ./app ./lib
+
+# 添加模块
+go work use ./another-module
+
+# 同步
+go work sync
+```
+
+```go
+// go.mod
+module github.com/user/myproject
+
+go 1.21
+
+require (
+    github.com/gin-gonic/gin v1.9.1
+    github.com/go-sql-driver/mysql v1.7.1
+    golang.org/x/sync v0.3.0
+)
+
+require (
+    // indirect 表示间接依赖
+    github.com/bytedance/sonic v1.9.1 // indirect
+    golang.org/x/net v0.10.0 // indirect
+)
+
+// 替换依赖 (本地开发/fork)
+replace github.com/original/pkg => ../local/pkg
+replace github.com/original/pkg => github.com/fork/pkg v1.0.0
+
+// 排除版本
+exclude github.com/broken/pkg v1.0.0
+
+// 撤回版本 (库作者使用)
+retract (
+    v1.0.0 // 有严重 bug
+    [v1.1.0, v1.2.0] // 范围撤回
+)
+```
+
+```go
+// go.work (工作空间)
+go 1.21
+
+use (
+    ./app
+    ./lib
+    ./shared
+)
+
+replace github.com/myorg/shared => ./shared
+```
+
+```bash
+# ==================== 私有模块 ====================
+
+# 设置私有仓库
+go env -w GOPRIVATE=github.com/mycompany/*
+go env -w GOPRIVATE=*.internal.company.com
+
+# Git 配置 (使用 SSH)
+git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+# 使用 token
+git config --global url."https://${TOKEN}@github.com/".insteadOf "https://github.com/"
+```
+
+### Rust 包管理
+
+```bash
+# ==================== cargo ====================
+
+# 创建项目
+cargo new my-project                     # 二进制项目
+cargo new --lib my-library               # 库项目
+cargo init                               # 在当前目录初始化
+
+# 构建
+cargo build                              # 调试构建
+cargo build --release                    # 发布构建
+
+# 运行
+cargo run
+cargo run --release
+cargo run --example demo                 # 运行示例
+
+# 测试
+cargo test
+cargo test test_name                     # 运行特定测试
+cargo test --doc                         # 文档测试
+
+# 检查
+cargo check                              # 快速检查 (不生成二进制)
+cargo clippy                             # lint
+cargo fmt                                # 格式化
+
+# 依赖管理
+cargo add serde                          # 添加依赖
+cargo add serde --features derive        # 带 feature
+cargo add tokio -F full                  # 简写
+cargo add --dev mockall                  # 开发依赖
+cargo remove serde                       # 移除
+
+# 更新
+cargo update                             # 更新所有
+cargo update serde                       # 更新特定包
+
+# 发布
+cargo login
+cargo publish
+cargo publish --dry-run                  # 预检
+
+# 文档
+cargo doc --open                         # 生成并打开文档
+```
+
+```toml
+# Cargo.toml
+[package]
+name = "my-project"
+version = "1.0.0"
+edition = "2021"
+authors = ["Author <author@example.com>"]
+description = "My awesome project"
+license = "MIT"
+repository = "https://github.com/user/my-project"
+readme = "README.md"
+keywords = ["cli", "tool"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+
+# 可选依赖
+fancy-feature = { version = "1.0", optional = true }
+
+# 本地依赖
+my-lib = { path = "../my-lib" }
+
+# Git 依赖
+new-crate = { git = "https://github.com/user/new-crate", branch = "main" }
+
+[dev-dependencies]
+mockall = "0.11"
+criterion = "0.5"
+
+[build-dependencies]
+cc = "1.0"
+
+[features]
+default = ["std"]
+std = []
+full = ["std", "fancy-feature"]
+
+# 条件依赖
+[target.'cfg(unix)'.dependencies]
+nix = "0.26"
+
+[target.'cfg(windows)'.dependencies]
+windows = "0.48"
+
+[[bin]]
+name = "my-cli"
+path = "src/bin/cli.rs"
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
+
+[[bench]]
+name = "my-bench"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+```
+
+```toml
+# .cargo/config.toml (项目配置)
+[build]
+target = "x86_64-unknown-linux-gnu"
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+
+[registries.my-registry]
+index = "https://my-registry.example.com/index"
+
+[net]
+git-fetch-with-cli = true
+
+[alias]
+b = "build"
+t = "test"
+r = "run"
+
+# 使用国内镜像
+[source.crates-io]
+replace-with = 'ustc'
+
+[source.ustc]
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+```
+
+### 包管理对比总结
+
+```
+┌─────────────────┬────────────────────┬────────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript         │ Python             │ Go             │ Rust           │
+├─────────────────┼────────────────────┼────────────────────┼────────────────┼────────────────┤
+│ 包管理器        │ npm/yarn/pnpm      │ pip/poetry/uv      │ go mod         │ cargo          │
+│ 配置文件        │ package.json       │ pyproject.toml     │ go.mod         │ Cargo.toml     │
+│ 锁文件          │ package-lock.json  │ poetry.lock        │ go.sum         │ Cargo.lock     │
+│ 中央仓库        │ npmjs.com          │ pypi.org           │ proxy.golang.org│ crates.io     │
+│ 本地依赖        │ file:../path       │ path = "../path"   │ replace        │ path = "../"   │
+│ Git 依赖        │ git+url            │ git+url            │ 自动支持       │ git = "url"    │
+│ 工作空间        │ npm/yarn/pnpm      │ poetry             │ go work        │ workspace      │
+│ 虚拟环境        │ 不需要             │ venv/poetry        │ 不需要         │ 不需要         │
+│ 速度            │ pnpm 最快          │ uv 最快            │ 快             │ 快             │
+└─────────────────┴────────────────────┴────────────────────┴────────────────┴────────────────┘
+```
+
+### 常用命令速查
+
+```
+┌─────────────────┬────────────────────┬────────────────────┬────────────────┬────────────────┐
+│ 操作            │ npm/pnpm           │ poetry/uv          │ go             │ cargo          │
+├─────────────────┼────────────────────┼────────────────────┼────────────────┼────────────────┤
+│ 初始化          │ npm init           │ poetry new         │ go mod init    │ cargo new      │
+│ 添加依赖        │ npm i pkg          │ poetry add pkg     │ go get pkg     │ cargo add pkg  │
+│ 移除依赖        │ npm rm pkg         │ poetry remove pkg  │ (手动删除)     │ cargo rm pkg   │
+│ 安装全部        │ npm install        │ poetry install     │ go mod download│ cargo build    │
+│ 更新依赖        │ npm update         │ poetry update      │ go get -u      │ cargo update   │
+│ 运行脚本        │ npm run dev        │ poetry run cmd     │ go run .       │ cargo run      │
+│ 构建           │ npm run build      │ poetry build       │ go build       │ cargo build    │
+│ 测试           │ npm test           │ poetry run pytest  │ go test        │ cargo test     │
+│ 发布           │ npm publish        │ poetry publish     │ (git tag)      │ cargo publish  │
+└─────────────────┴────────────────────┴────────────────────┴────────────────┴────────────────┘
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
