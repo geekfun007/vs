@@ -7002,6 +7002,919 @@ impl UserService for MyUserService {
 
 ---
 
+## 🔢 数字类型
+
+### 数字类型概览
+
+| 语言 | 整数 | 浮点数 | 大整数 | 特点 |
+|------|------|--------|--------|------|
+| TypeScript | `number` | `number` | `bigint` | 统一 number |
+| Python | `int` | `float` | `int` (无限) | 自动大整数 |
+| Go | `int8`~`int64` | `float32/64` | `math/big` | 精确控制 |
+| Rust | `i8`~`i128` | `f32/f64` | 外部 crate | 显式溢出 |
+
+### TypeScript 数字
+
+```typescript
+// ==================== number (64位浮点) ====================
+const int = 42;
+const float = 3.14;
+const negative = -100;
+const scientific = 1e10;
+const hex = 0xff;
+const binary = 0b1010;
+const octal = 0o755;
+
+// 精度问题
+0.1 + 0.2;           // 0.30000000000000004
+0.1 + 0.2 === 0.3;   // false
+
+// 特殊值
+Infinity;            // 正无穷
+-Infinity;           // 负无穷
+NaN;                 // 非数字
+Number.MAX_VALUE;    // 最大值 ~1.8e308
+Number.MIN_VALUE;    // 最小正值 ~5e-324
+Number.MAX_SAFE_INTEGER;  // 2^53 - 1
+
+// 检查
+Number.isNaN(NaN);        // true
+Number.isFinite(100);     // true
+Number.isInteger(42);     // true
+Number.isSafeInteger(42); // true
+
+// ==================== bigint ====================
+const big = 9007199254740993n;
+const bigHex = 0xffffffffffn;
+BigInt("12345678901234567890");
+
+// 运算 (不能与 number 混用)
+big + 1n;            // OK
+// big + 1;          // 错误!
+big * 2n;
+big ** 10n;
+
+// ==================== 转换 ====================
+parseInt("42");           // 42
+parseInt("ff", 16);       // 255
+parseFloat("3.14");       // 3.14
+Number("42");             // 42
++"42";                    // 42
+
+(42).toString();          // "42"
+(255).toString(16);       // "ff"
+(3.14159).toFixed(2);     // "3.14"
+(1234.5).toExponential(); // "1.2345e+3"
+
+// ==================== Math 对象 ====================
+Math.abs(-5);        // 5
+Math.round(3.5);     // 4
+Math.floor(3.9);     // 3
+Math.ceil(3.1);      // 4
+Math.trunc(3.9);     // 3
+Math.max(1, 2, 3);   // 3
+Math.min(1, 2, 3);   // 1
+Math.pow(2, 10);     // 1024
+Math.sqrt(16);       // 4
+Math.random();       // 0~1 随机数
+```
+
+### Python 数字
+
+```python
+# ==================== int (任意精度) ====================
+x = 42
+big = 123456789012345678901234567890  # 自动大整数
+hex_num = 0xff
+binary = 0b1010
+octal = 0o755
+
+# 无溢出
+2 ** 1000  # 正常计算
+
+# ==================== float (64位) ====================
+pi = 3.14159
+scientific = 1e10
+inf = float('inf')
+neg_inf = float('-inf')
+nan = float('nan')
+
+# 精度问题
+0.1 + 0.2  # 0.30000000000000004
+
+# ==================== decimal (精确小数) ====================
+from decimal import Decimal, ROUND_HALF_UP
+
+price = Decimal('19.99')
+tax = Decimal('0.0825')
+total = price * (1 + tax)
+total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+# ==================== fractions (分数) ====================
+from fractions import Fraction
+
+f = Fraction(1, 3)
+f + Fraction(1, 6)  # Fraction(1, 2)
+Fraction('0.25')    # Fraction(1, 4)
+
+# ==================== complex (复数) ====================
+c = 3 + 4j
+c.real    # 3.0
+c.imag    # 4.0
+abs(c)    # 5.0 (模)
+
+# ==================== 转换 ====================
+int("42")
+int("ff", 16)       # 255
+float("3.14")
+str(42)
+hex(255)            # "0xff"
+bin(10)             # "0b1010"
+oct(8)              # "0o10"
+
+# ==================== 检查 ====================
+import math
+
+math.isnan(float('nan'))
+math.isinf(float('inf'))
+math.isfinite(42)
+isinstance(42, int)
+
+# ==================== math 模块 ====================
+import math
+
+math.floor(3.9)     # 3
+math.ceil(3.1)      # 4
+math.trunc(3.9)     # 3
+math.sqrt(16)       # 4.0
+math.pow(2, 10)     # 1024.0
+math.log(100, 10)   # 2.0
+math.sin(math.pi/2) # 1.0
+math.factorial(5)   # 120
+math.gcd(12, 18)    # 6
+```
+
+### Go 数字
+
+```go
+// ==================== 整数类型 ====================
+var i8 int8    // -128 ~ 127
+var i16 int16  // -32768 ~ 32767
+var i32 int32  // -2^31 ~ 2^31-1
+var i64 int64  // -2^63 ~ 2^63-1
+var i int      // 32 或 64 位 (平台相关)
+
+var u8 uint8   // 0 ~ 255 (byte)
+var u16 uint16
+var u32 uint32
+var u64 uint64
+var u uint
+
+// 字面量
+x := 42
+hex := 0xff
+binary := 0b1010
+octal := 0o755
+withSep := 1_000_000  // Go 1.13+
+
+// ==================== 浮点类型 ====================
+var f32 float32  // ~6位有效数字
+var f64 float64  // ~15位有效数字
+
+pi := 3.14159
+scientific := 1e10
+
+// 特殊值
+inf := math.Inf(1)
+negInf := math.Inf(-1)
+nan := math.NaN()
+
+// ==================== 转换 ====================
+import "strconv"
+
+strconv.Atoi("42")            // int, error
+strconv.ParseInt("ff", 16, 64) // int64, error
+strconv.ParseFloat("3.14", 64) // float64, error
+
+strconv.Itoa(42)              // "42"
+strconv.FormatInt(255, 16)    // "ff"
+strconv.FormatFloat(3.14, 'f', 2, 64) // "3.14"
+
+// 类型转换
+float64(42)
+int(3.14)  // 3 (截断)
+
+// ==================== 大整数 ====================
+import "math/big"
+
+a := big.NewInt(1)
+b := big.NewInt(1)
+for i := 2; i <= 100; i++ {
+    a.Mul(a, b.SetInt64(int64(i)))
+}
+// a = 100!
+
+// ==================== math 包 ====================
+import "math"
+
+math.Abs(-5)
+math.Floor(3.9)
+math.Ceil(3.1)
+math.Trunc(3.9)
+math.Round(3.5)
+math.Max(1, 2)
+math.Min(1, 2)
+math.Pow(2, 10)
+math.Sqrt(16)
+math.IsNaN(nan)
+math.IsInf(inf, 1)
+
+// ==================== 溢出处理 ====================
+import "math/bits"
+
+sum, carry := bits.Add64(a, b, 0)
+diff, borrow := bits.Sub64(a, b, 0)
+hi, lo := bits.Mul64(a, b)
+```
+
+### Rust 数字
+
+```rust
+// ==================== 整数类型 ====================
+let i8: i8 = -128;      // -128 ~ 127
+let i16: i16 = -32768;
+let i32: i32 = -2_147_483_648;
+let i64: i64 = 0;
+let i128: i128 = 0;
+let isize: isize = 0;   // 指针大小
+
+let u8: u8 = 255;
+let u16: u16 = 0;
+let u32: u32 = 0;
+let u64: u64 = 0;
+let u128: u128 = 0;
+let usize: usize = 0;
+
+// 字面量
+let decimal = 98_222;
+let hex = 0xff;
+let octal = 0o77;
+let binary = 0b1111_0000;
+let byte = b'A';  // u8
+
+// 类型后缀
+let x = 42i32;
+let y = 3.14f64;
+
+// ==================== 浮点类型 ====================
+let f32: f32 = 3.14;  // 单精度
+let f64: f64 = 3.14;  // 双精度 (默认)
+
+let inf = f64::INFINITY;
+let neg_inf = f64::NEG_INFINITY;
+let nan = f64::NAN;
+
+// ==================== 溢出处理 ====================
+// Debug 模式: panic
+// Release 模式: 环绕
+
+// 显式处理
+let (result, overflowed) = 255u8.overflowing_add(1);
+let result = 255u8.wrapping_add(1);      // 环绕: 0
+let result = 255u8.saturating_add(1);    // 饱和: 255
+let result = 255u8.checked_add(1);       // Option: None
+
+// ==================== 转换 ====================
+// 解析
+let n: i32 = "42".parse().unwrap();
+let n = "42".parse::<i32>().unwrap();
+let n = i32::from_str_radix("ff", 16).unwrap();
+
+// 格式化
+42.to_string();
+format!("{:x}", 255);     // "ff"
+format!("{:b}", 10);      // "1010"
+format!("{:.2}", 3.14159); // "3.14"
+
+// 类型转换
+42i32 as f64;
+3.14f64 as i32;  // 3 (截断)
+
+// 安全转换
+let n: u8 = 256i32.try_into().unwrap_or(255);
+
+// ==================== 方法 ====================
+(-5i32).abs();
+3.14f64.floor();
+3.14f64.ceil();
+3.14f64.trunc();
+3.14f64.round();
+16f64.sqrt();
+2f64.powi(10);  // 整数幂
+2f64.powf(0.5); // 浮点幂
+x.max(y);
+x.min(y);
+x.clamp(min, max);
+
+f64::NAN.is_nan();
+f64::INFINITY.is_infinite();
+42f64.is_finite();
+
+// ==================== num crate ====================
+// 大整数、有理数等
+use num_bigint::BigInt;
+use num_rational::Ratio;
+
+let big: BigInt = "123456789012345678901234567890".parse().unwrap();
+let ratio = Ratio::new(1, 3);
+```
+
+### 数字类型对比
+
+```
+┌──────────────────┬────────────┬────────────┬────────────┬────────────┐
+│ 特性             │ TypeScript │ Python     │ Go         │ Rust       │
+├──────────────────┼────────────┼────────────┼────────────┼────────────┤
+│ 默认整数         │ number     │ int        │ int        │ i32        │
+│ 默认浮点         │ number     │ float      │ float64    │ f64        │
+│ 整数精度         │ 53位       │ 无限       │ 64位       │ 128位      │
+│ 大整数           │ bigint     │ 内置       │ math/big   │ num crate  │
+│ 溢出处理         │ 无         │ 自动扩展   │ 环绕       │ 可选       │
+│ 精确小数         │ 外部库     │ Decimal    │ 外部库     │ 外部库     │
+│ 复数             │ ❌         │ 内置       │ complex128 │ num crate  │
+└──────────────────┴────────────┴────────────┴────────────┴────────────┘
+```
+
+---
+
+## 🔀 逻辑运算
+
+### 布尔类型与运算符
+
+| 语言 | 布尔类型 | 与 | 或 | 非 | 异或 |
+|------|----------|-----|-----|-----|------|
+| TypeScript | `boolean` | `&&` | `\|\|` | `!` | `^` (位) |
+| Python | `bool` | `and` | `or` | `not` | `^` |
+| Go | `bool` | `&&` | `\|\|` | `!` | `^` (位) |
+| Rust | `bool` | `&&` | `\|\|` | `!` | `^` |
+
+### TypeScript 逻辑运算
+
+```typescript
+// ==================== 布尔值 ====================
+const t: boolean = true;
+const f: boolean = false;
+
+// ==================== 逻辑运算符 ====================
+true && false;   // false (短路与)
+true || false;   // true  (短路或)
+!true;           // false
+
+// ==================== 比较运算符 ====================
+1 === 1;         // true  (严格相等)
+1 == "1";        // true  (宽松相等，避免使用)
+1 !== 2;         // true
+1 < 2;           // true
+1 <= 2;          // true
+2 > 1;           // true
+2 >= 1;          // true
+
+// ==================== 短路求值 ====================
+const name = user && user.name;
+const value = input || "default";
+const value2 = input ?? "default";  // 仅 null/undefined
+
+// ==================== 条件表达式 ====================
+const result = condition ? "yes" : "no";
+
+// ==================== Falsy 值 ====================
+// false, 0, -0, 0n, "", null, undefined, NaN
+if (!0) console.log("0 is falsy");
+if (!"") console.log('"" is falsy');
+
+// ==================== 类型守卫 ====================
+if (typeof x === "string") {
+  x.toUpperCase();
+}
+
+if (x instanceof Date) {
+  x.getTime();
+}
+
+if ("name" in obj) {
+  obj.name;
+}
+
+if (Array.isArray(x)) {
+  x.length;
+}
+
+// ==================== 位运算 ====================
+0b1010 & 0b1100;  // 0b1000 (AND)
+0b1010 | 0b1100;  // 0b1110 (OR)
+0b1010 ^ 0b1100;  // 0b0110 (XOR)
+~0b1010;          // 取反
+0b1 << 4;         // 0b10000 (左移)
+0b10000 >> 4;     // 0b1 (右移)
+-1 >>> 1;         // 无符号右移
+```
+
+### Python 逻辑运算
+
+```python
+# ==================== 布尔值 ====================
+t = True
+f = False
+
+# bool 是 int 子类
+True + True   # 2
+False * 10    # 0
+
+# ==================== 逻辑运算符 ====================
+True and False   # False
+True or False    # True
+not True         # False
+
+# ==================== 比较运算符 ====================
+1 == 1           # True
+1 != 2           # True
+1 < 2            # True
+1 <= 2           # True
+2 > 1            # True
+2 >= 1           # True
+
+# 链式比较
+1 < x < 10       # 等价于 1 < x and x < 10
+a == b == c      # 三者相等
+
+# is vs ==
+a = [1, 2]
+b = [1, 2]
+a == b           # True (值相等)
+a is b           # False (不同对象)
+a is not b       # True
+
+# ==================== 短路求值 ====================
+name = user and user.name
+value = input or "default"
+
+# 返回决定结果的值 (不一定是 bool)
+1 and 2          # 2
+0 and 2          # 0
+1 or 2           # 1
+0 or 2           # 2
+
+# ==================== 条件表达式 ====================
+result = "yes" if condition else "no"
+
+# ==================== Falsy 值 ====================
+# False, 0, 0.0, 0j, "", [], {}, set(), None
+bool(0)          # False
+bool([])         # False
+bool("")         # False
+
+# 自定义 Falsy
+class MyClass:
+    def __bool__(self):
+        return False
+
+# ==================== all / any ====================
+all([True, True, False])   # False
+any([True, False, False])  # True
+
+all(x > 0 for x in [1, 2, 3])  # True
+any(x < 0 for x in [1, 2, 3])  # False
+
+# ==================== 位运算 ====================
+0b1010 & 0b1100   # 0b1000
+0b1010 | 0b1100   # 0b1110
+0b1010 ^ 0b1100   # 0b0110
+~0b1010           # -0b1011 (取反)
+0b1 << 4          # 0b10000
+0b10000 >> 4      # 0b1
+```
+
+### Go 逻辑运算
+
+```go
+// ==================== 布尔值 ====================
+var t bool = true
+var f bool = false
+
+// ==================== 逻辑运算符 ====================
+true && false    // false
+true || false    // true
+!true            // false
+
+// ==================== 比较运算符 ====================
+1 == 1           // true
+1 != 2           // true
+1 < 2            // true
+1 <= 2           // true
+2 > 1            // true
+2 >= 1           // true
+
+// 结构体比较 (可比较类型)
+type Point struct { X, Y int }
+p1 := Point{1, 2}
+p2 := Point{1, 2}
+p1 == p2         // true
+
+// ==================== 短路求值 ====================
+if user != nil && user.Name != "" {
+    // 安全访问
+}
+
+// ==================== 条件语句 ====================
+// Go 没有三元运算符
+var result string
+if condition {
+    result = "yes"
+} else {
+    result = "no"
+}
+
+// if 初始化语句
+if err := doSomething(); err != nil {
+    return err
+}
+
+// ==================== switch ====================
+switch value {
+case 1:
+    fmt.Println("one")
+case 2, 3:
+    fmt.Println("two or three")
+default:
+    fmt.Println("other")
+}
+
+// 无条件 switch (替代 if-else 链)
+switch {
+case x < 0:
+    fmt.Println("negative")
+case x == 0:
+    fmt.Println("zero")
+default:
+    fmt.Println("positive")
+}
+
+// ==================== 位运算 ====================
+0b1010 & 0b1100   // 0b1000
+0b1010 | 0b1100   // 0b1110
+0b1010 ^ 0b1100   // 0b0110
+^0b1010           // 取反 (^x = -x-1)
+0b1 << 4          // 0b10000
+0b10000 >> 4      // 0b1
+0b1010 &^ 0b1100  // 0b0010 (AND NOT)
+```
+
+### Rust 逻辑运算
+
+```rust
+// ==================== 布尔值 ====================
+let t: bool = true;
+let f: bool = false;
+
+// ==================== 逻辑运算符 ====================
+true && false    // false
+true || false    // true
+!true            // false
+
+// ==================== 比较运算符 ====================
+1 == 1           // true
+1 != 2           // true
+1 < 2            // true
+1 <= 2           // true
+2 > 1            // true
+2 >= 1           // true
+
+// 需要实现 PartialEq / Ord trait
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct Point { x: i32, y: i32 }
+
+// ==================== 短路求值 ====================
+let name = user.is_some() && user.unwrap().name.is_some();
+
+// ==================== 条件表达式 ====================
+// if 是表达式，可返回值
+let result = if condition { "yes" } else { "no" };
+
+let grade = if score >= 90 {
+    'A'
+} else if score >= 80 {
+    'B'
+} else {
+    'C'
+};
+
+// ==================== match (模式匹配) ====================
+let result = match value {
+    1 => "one",
+    2 | 3 => "two or three",
+    4..=10 => "four to ten",
+    n if n < 0 => "negative",
+    _ => "other",
+};
+
+// 解构匹配
+match point {
+    Point { x: 0, y: 0 } => "origin",
+    Point { x, y: 0 } => format!("on x-axis at {}", x),
+    Point { x: 0, y } => format!("on y-axis at {}", y),
+    Point { x, y } => format!("({}, {})", x, y),
+}
+
+// ==================== if let / while let ====================
+if let Some(value) = option {
+    println!("{}", value);
+}
+
+while let Some(item) = iter.next() {
+    println!("{}", item);
+}
+
+// let else
+let Some(value) = option else {
+    return;
+};
+
+// ==================== 位运算 ====================
+0b1010 & 0b1100   // 0b1000
+0b1010 | 0b1100   // 0b1110
+0b1010 ^ 0b1100   // 0b0110
+!0b1010u8         // 0b11110101 (取反)
+0b1 << 4          // 0b10000
+0b10000 >> 4      // 0b1
+```
+
+---
+
+## 📤 包发布
+
+### 发布流程概览
+
+| 语言 | 仓库 | 配置文件 | 发布命令 |
+|------|------|----------|----------|
+| TypeScript | npmjs.com | package.json | `npm publish` |
+| Python | pypi.org | pyproject.toml | `poetry publish` |
+| Go | pkg.go.dev | go.mod | git tag |
+| Rust | crates.io | Cargo.toml | `cargo publish` |
+
+### TypeScript 包发布
+
+```json
+// package.json
+{
+  "name": "@myorg/mypackage",
+  "version": "1.0.0",
+  "description": "My awesome package",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["typescript", "utility"],
+  "author": "Your Name <email@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/repo"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
+```
+
+```bash
+# 登录
+npm login
+
+# 发布
+npm publish                    # 公开包
+npm publish --access public    # scope 包
+
+# 版本管理
+npm version patch              # 1.0.0 -> 1.0.1
+npm version minor              # 1.0.0 -> 1.1.0
+npm version major              # 1.0.0 -> 2.0.0
+
+# 预发布
+npm publish --tag beta
+npm version prerelease --preid=beta  # 1.0.0 -> 1.0.1-beta.0
+
+# 废弃版本
+npm deprecate mypackage@1.0.0 "Use v2 instead"
+
+# 撤销 (72小时内)
+npm unpublish mypackage@1.0.0
+```
+
+### Python 包发布
+
+```toml
+# pyproject.toml
+[project]
+name = "mypackage"
+version = "1.0.0"
+description = "My awesome package"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Your Name", email = "email@example.com"}]
+keywords = ["python", "utility"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+]
+requires-python = ">=3.10"
+dependencies = ["requests>=2.28.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "mypy>=1.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/user/repo"
+Documentation = "https://mypackage.readthedocs.io"
+
+[project.scripts]
+mycli = "mypackage.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+```
+
+```bash
+# Poetry 发布
+poetry config pypi-token.pypi your-api-token
+poetry build
+poetry publish
+
+# 或使用 twine
+pip install build twine
+python -m build
+twine upload dist/*
+
+# 测试发布 (TestPyPI)
+twine upload --repository testpypi dist/*
+
+# 版本管理
+poetry version patch           # 1.0.0 -> 1.0.1
+poetry version minor           # 1.0.0 -> 1.1.0
+poetry version major           # 1.0.0 -> 2.0.0
+```
+
+### Go 包发布
+
+```go
+// go.mod
+module github.com/user/mypackage
+
+go 1.21
+
+// 无需 require 用于库
+```
+
+```bash
+# Go 使用 Git 标签发布，无需上传到中央仓库
+
+# 1. 确保代码可导入
+# github.com/user/mypackage 必须是有效的导入路径
+
+# 2. 版本标签
+git tag v1.0.0
+git push origin v1.0.0
+
+# 语义化版本
+git tag v1.0.1    # 补丁
+git tag v1.1.0    # 次版本
+git tag v2.0.0    # 主版本 (需要更新 module 路径)
+
+# 主版本 > 1 需要更新 go.mod
+module github.com/user/mypackage/v2
+
+# 3. pkg.go.dev 自动索引
+# 访问 https://pkg.go.dev/github.com/user/mypackage
+
+# 预发布
+git tag v1.0.0-beta.1
+
+# 撤回版本 (在 go.mod 中)
+retract v1.0.0  // 有严重 bug
+
+# 私有模块
+go env -w GOPRIVATE=github.com/myorg/*
+```
+
+### Rust 包发布
+
+```toml
+# Cargo.toml
+[package]
+name = "mypackage"
+version = "1.0.0"
+edition = "2021"
+authors = ["Your Name <email@example.com>"]
+description = "My awesome package"
+documentation = "https://docs.rs/mypackage"
+readme = "README.md"
+homepage = "https://github.com/user/repo"
+repository = "https://github.com/user/repo"
+license = "MIT"
+keywords = ["rust", "utility"]
+categories = ["development-tools"]
+exclude = ["tests/*", "benches/*"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["std"]
+std = []
+full = ["std", "extra"]
+```
+
+```bash
+# 登录
+cargo login your-api-token
+
+# 检查
+cargo publish --dry-run
+
+# 发布
+cargo publish
+
+# 版本管理 (手动修改 Cargo.toml 或使用 cargo-release)
+cargo install cargo-release
+cargo release patch            # 1.0.0 -> 1.0.1
+cargo release minor            # 1.0.0 -> 1.1.0
+cargo release major            # 1.0.0 -> 2.0.0
+
+# 撤回版本 (yank)
+cargo yank --version 1.0.0
+cargo yank --version 1.0.0 --undo
+
+# 发布工作空间中的包
+cargo publish -p mypackage
+```
+
+### 发布检查清单
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        发布前检查清单                            │
+├─────────────────────────────────────────────────────────────────┤
+│ □ README.md 完整清晰                                            │
+│ □ CHANGELOG.md 更新                                             │
+│ □ LICENSE 文件存在                                              │
+│ □ 版本号符合语义化版本                                          │
+│ □ 依赖版本固定或有合理范围                                      │
+│ □ 测试全部通过                                                  │
+│ □ 文档完整 (API 文档、示例)                                     │
+│ □ 无敏感信息 (token、密钥)                                      │
+│ □ .gitignore / .npmignore 配置正确                             │
+│ □ CI/CD 检查通过                                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 版本号规范 (SemVer)
+
+```
+MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
+
+1.0.0        稳定版本
+1.0.1        补丁版本 (bug 修复)
+1.1.0        次版本 (新功能，向后兼容)
+2.0.0        主版本 (破坏性变更)
+1.0.0-alpha  预发布版本
+1.0.0-beta.1 预发布迭代
+1.0.0+build  构建元数据
+
+版本范围:
+^1.2.3    >=1.2.3 <2.0.0   (兼容)
+~1.2.3    >=1.2.3 <1.3.0   (补丁)
+>=1.2.3   >=1.2.3          (最小版本)
+1.2.*     >=1.2.0 <1.3.0   (通配符)
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
