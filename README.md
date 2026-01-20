@@ -5929,6 +5929,1079 @@ async fn example() {
 
 ---
 
+## 🚫 空值处理
+
+### 空值类型概览
+
+| 语言 | 空值类型 | 安全机制 | 特点 |
+|------|----------|----------|------|
+| TypeScript | `null`, `undefined` | 可选链、空值合并 | 两种空值 |
+| Python | `None` | or、if 检查 | 单一空值 |
+| Go | `nil` | if 检查 | 零值概念 |
+| Rust | 无 null | `Option<T>` | 编译时保证 |
+
+### TypeScript 空值处理
+
+```typescript
+// ==================== null vs undefined ====================
+let a: null = null;           // 显式空
+let b: undefined = undefined; // 未定义
+let c: string | null = null;  // 可空类型
+
+// 区别
+typeof null;       // "object" (历史遗留)
+typeof undefined;  // "undefined"
+
+// ==================== 可选链 (?.) ====================
+const name = user?.profile?.name;
+const first = arr?.[0];
+const result = obj?.method?.();
+
+// ==================== 空值合并 (??) ====================
+const value = input ?? "default";  // 仅 null/undefined
+const name = user.name ?? "Anonymous";
+
+// 与 || 区别
+0 || "default";    // "default" (0 是 falsy)
+0 ?? "default";    // 0 (仅 null/undefined 触发)
+
+// ==================== 非空断言 (!) ====================
+const name = user!.name;  // 告诉编译器不为空 (危险)
+
+// ==================== 类型守卫 ====================
+function process(value: string | null) {
+  if (value === null) return;
+  console.log(value.toUpperCase());  // 类型收窄
+}
+
+function isNotNull<T>(value: T | null): value is T {
+  return value !== null;
+}
+
+const items = [1, null, 2].filter(isNotNull);  // number[]
+
+// ==================== 可选参数与属性 ====================
+interface User {
+  name: string;
+  email?: string;  // string | undefined
+}
+
+function greet(name: string, title?: string) {
+  return title ? `${title} ${name}` : name;
+}
+```
+
+### Python 空值处理
+
+```python
+# ==================== None 基础 ====================
+value = None
+value is None      # True (推荐用 is)
+value == None      # True (但不推荐)
+
+# ==================== 类型注解 ====================
+from typing import Optional
+
+def find_user(id: int) -> Optional[str]:  # str | None
+    return None if id < 0 else "User"
+
+def process(name: str | None) -> str:  # Python 3.10+
+    return name or "default"
+
+# ==================== or 默认值 ====================
+name = user_name or "Anonymous"
+
+# 注意: 空字符串、0、[] 也会触发
+"" or "default"    # "default"
+0 or 42            # 42
+
+# ==================== 条件表达式 ====================
+name = user_name if user_name is not None else "default"
+
+# ==================== walrus 运算符 ====================
+if (match := re.search(pattern, text)) is not None:
+    print(match.group())
+
+# ==================== getattr / get ====================
+value = getattr(obj, 'attr', 'default')
+value = dict.get('key', 'default')
+
+# ==================== 链式访问 (需要库) ====================
+# pip install glom
+from glom import glom
+name = glom(user, 'profile.name', default=None)
+```
+
+### Go 空值处理
+
+```go
+// ==================== nil 与零值 ====================
+var s string    // "" (零值)
+var n int       // 0
+var b bool      // false
+var p *int      // nil
+var sl []int    // nil
+var m map[string]int  // nil
+var ch chan int // nil
+var fn func()   // nil
+var i interface{} // nil
+
+// ==================== nil 检查 ====================
+if p != nil {
+    fmt.Println(*p)
+}
+
+if m == nil {
+    m = make(map[string]int)
+}
+
+// ==================== 指针与可选值 ====================
+type User struct {
+    Name  string
+    Email *string  // 可选字段
+}
+
+func NewUser(name string, email *string) User {
+    return User{Name: name, Email: email}
+}
+
+// 使用
+email := "test@example.com"
+user := NewUser("John", &email)
+user2 := NewUser("Jane", nil)
+
+// ==================== comma ok 模式 ====================
+value, ok := m["key"]
+if !ok {
+    // 不存在
+}
+
+if v, ok := m["key"]; ok {
+    fmt.Println(v)
+}
+
+// 类型断言
+if str, ok := i.(string); ok {
+    fmt.Println(str)
+}
+
+// ==================== 默认值函数 ====================
+func OrDefault[T any](ptr *T, def T) T {
+    if ptr == nil {
+        return def
+    }
+    return *ptr
+}
+
+name := OrDefault(user.Nickname, "Anonymous")
+```
+
+### Rust 空值处理
+
+```rust
+// ==================== Option<T> ====================
+let some_value: Option<i32> = Some(42);
+let no_value: Option<i32> = None;
+
+// ==================== 模式匹配 ====================
+match some_value {
+    Some(v) => println!("Value: {}", v),
+    None => println!("No value"),
+}
+
+// if let
+if let Some(v) = some_value {
+    println!("Value: {}", v);
+}
+
+// let else
+let Some(v) = some_value else {
+    println!("No value");
+    return;
+};
+
+// ==================== 方法链 ====================
+// unwrap - 有值返回，None 则 panic
+some_value.unwrap();
+
+// expect - 带错误消息的 unwrap
+some_value.expect("Should have value");
+
+// unwrap_or - 默认值
+no_value.unwrap_or(0);  // 0
+
+// unwrap_or_else - 惰性默认值
+no_value.unwrap_or_else(|| compute_default());
+
+// unwrap_or_default - 类型默认值
+no_value.unwrap_or_default();  // 0
+
+// ==================== 转换方法 ====================
+// map - 转换内部值
+some_value.map(|v| v * 2);  // Some(84)
+
+// and_then - 链式 Option
+some_value.and_then(|v| if v > 0 { Some(v) } else { None });
+
+// filter
+some_value.filter(|v| *v > 0);
+
+// ok_or - 转为 Result
+some_value.ok_or("No value")?;
+
+// ==================== ? 操作符 ====================
+fn get_name(user: Option<User>) -> Option<String> {
+    let user = user?;  // None 则提前返回
+    let profile = user.profile?;
+    Some(profile.name)
+}
+
+// ==================== Option 组合 ====================
+let a: Option<i32> = Some(1);
+let b: Option<i32> = Some(2);
+
+// zip
+a.zip(b);  // Some((1, 2))
+
+// or
+None.or(Some(1));  // Some(1)
+
+// and
+Some(1).and(Some(2));  // Some(2)
+```
+
+---
+
+## 🔧 函数
+
+### 函数特性概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 一等公民 | ✅ | ✅ | ✅ | ✅ |
+| 闭包 | ✅ | ✅ | ✅ | ✅ |
+| 默认参数 | ✅ | ✅ | ❌ | ❌ |
+| 命名参数 | ❌ (对象模拟) | ✅ | ❌ | ❌ |
+| 可变参数 | ✅ | ✅ | ✅ | ❌ (宏) |
+| 多返回值 | ❌ (元组模拟) | ✅ | ✅ | ❌ (元组) |
+| 重载 | ✅ (类型) | ❌ | ❌ | ✅ (trait) |
+
+### TypeScript 函数
+
+```typescript
+// ==================== 函数声明 ====================
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+// 函数表达式
+const multiply = function(a: number, b: number): number {
+  return a * b;
+};
+
+// 箭头函数
+const divide = (a: number, b: number): number => a / b;
+
+// ==================== 参数 ====================
+// 默认参数
+function greet(name: string, greeting = "Hello"): string {
+  return `${greeting}, ${name}!`;
+}
+
+// 可选参数
+function log(message: string, level?: string): void {
+  console.log(level ? `[${level}] ${message}` : message);
+}
+
+// 剩余参数
+function sum(...numbers: number[]): number {
+  return numbers.reduce((a, b) => a + b, 0);
+}
+
+// 解构参数
+function createUser({ name, age = 18 }: { name: string; age?: number }) {
+  return { name, age };
+}
+
+// ==================== 函数类型 ====================
+type MathFn = (a: number, b: number) => number;
+type Callback = (error: Error | null, result?: string) => void;
+
+interface Calculator {
+  add: MathFn;
+  subtract: MathFn;
+}
+
+// ==================== 闭包 ====================
+function counter() {
+  let count = 0;
+  return {
+    increment: () => ++count,
+    decrement: () => --count,
+    get: () => count,
+  };
+}
+
+// ==================== 重载 ====================
+function process(x: string): string;
+function process(x: number): number;
+function process(x: string | number): string | number {
+  return typeof x === "string" ? x.toUpperCase() : x * 2;
+}
+
+// ==================== 泛型函数 ====================
+function identity<T>(value: T): T {
+  return value;
+}
+
+function map<T, U>(arr: T[], fn: (item: T) => U): U[] {
+  return arr.map(fn);
+}
+
+// ==================== 高阶函数 ====================
+const compose = <T>(...fns: ((x: T) => T)[]) =>
+  (x: T) => fns.reduceRight((acc, fn) => fn(acc), x);
+
+const pipe = <T>(...fns: ((x: T) => T)[]) =>
+  (x: T) => fns.reduce((acc, fn) => fn(acc), x);
+```
+
+### Python 函数
+
+```python
+from typing import Callable, TypeVar, ParamSpec
+
+# ==================== 函数定义 ====================
+def add(a: int, b: int) -> int:
+    return a + b
+
+# lambda
+multiply = lambda a, b: a * b
+
+# ==================== 参数 ====================
+# 默认参数
+def greet(name: str, greeting: str = "Hello") -> str:
+    return f"{greeting}, {name}!"
+
+# 可变位置参数
+def sum_all(*numbers: int) -> int:
+    return sum(numbers)
+
+# 可变关键字参数
+def create_user(**kwargs) -> dict:
+    return kwargs
+
+# 混合参数
+def func(pos1, pos2, /, pos_or_kw, *, kw_only):
+    pass
+# pos1, pos2: 仅位置参数
+# pos_or_kw: 位置或关键字
+# kw_only: 仅关键字参数
+
+# 解包调用
+args = [1, 2, 3]
+func(*args)
+kwargs = {"name": "John", "age": 30}
+func(**kwargs)
+
+# ==================== 类型注解 ====================
+Callback = Callable[[str, int], bool]
+
+T = TypeVar('T')
+P = ParamSpec('P')
+
+def decorator(fn: Callable[P, T]) -> Callable[P, T]:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        return fn(*args, **kwargs)
+    return wrapper
+
+# ==================== 闭包 ====================
+def counter():
+    count = 0
+    def increment():
+        nonlocal count  # 访问外部变量
+        count += 1
+        return count
+    return increment
+
+# ==================== 装饰器 ====================
+def log_calls(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"Calling {func.__name__}")
+        return func(*args, **kwargs)
+    return wrapper
+
+@log_calls
+def my_function():
+    pass
+
+# ==================== 高阶函数 ====================
+from functools import reduce, partial
+
+# map, filter, reduce
+list(map(lambda x: x * 2, [1, 2, 3]))
+list(filter(lambda x: x > 1, [1, 2, 3]))
+reduce(lambda a, b: a + b, [1, 2, 3])
+
+# partial
+def power(base, exp):
+    return base ** exp
+square = partial(power, exp=2)
+```
+
+### Go 函数
+
+```go
+// ==================== 函数定义 ====================
+func add(a, b int) int {
+    return a + b
+}
+
+// 多返回值
+func divide(a, b int) (int, error) {
+    if b == 0 {
+        return 0, errors.New("division by zero")
+    }
+    return a / b, nil
+}
+
+// 命名返回值
+func split(sum int) (x, y int) {
+    x = sum * 4 / 9
+    y = sum - x
+    return  // 裸返回
+}
+
+// ==================== 可变参数 ====================
+func sum(numbers ...int) int {
+    total := 0
+    for _, n := range numbers {
+        total += n
+    }
+    return total
+}
+
+// 展开切片
+nums := []int{1, 2, 3}
+sum(nums...)
+
+// ==================== 函数类型 ====================
+type MathFunc func(int, int) int
+type Handler func(w http.ResponseWriter, r *http.Request)
+
+// ==================== 闭包 ====================
+func counter() func() int {
+    count := 0
+    return func() int {
+        count++
+        return count
+    }
+}
+
+// ==================== 匿名函数 ====================
+func() {
+    fmt.Println("Immediately invoked")
+}()
+
+sort.Slice(items, func(i, j int) bool {
+    return items[i] < items[j]
+})
+
+// ==================== 方法 ====================
+type Rectangle struct {
+    Width, Height float64
+}
+
+// 值接收者
+func (r Rectangle) Area() float64 {
+    return r.Width * r.Height
+}
+
+// 指针接收者
+func (r *Rectangle) Scale(factor float64) {
+    r.Width *= factor
+    r.Height *= factor
+}
+
+// ==================== 泛型函数 (Go 1.18+) ====================
+func Map[T, U any](slice []T, fn func(T) U) []U {
+    result := make([]U, len(slice))
+    for i, v := range slice {
+        result[i] = fn(v)
+    }
+    return result
+}
+
+func Filter[T any](slice []T, pred func(T) bool) []T {
+    var result []T
+    for _, v := range slice {
+        if pred(v) {
+            result = append(result, v)
+        }
+    }
+    return result
+}
+```
+
+### Rust 函数
+
+```rust
+// ==================== 函数定义 ====================
+fn add(a: i32, b: i32) -> i32 {
+    a + b  // 无分号 = 返回值
+}
+
+// 无返回值
+fn greet(name: &str) {
+    println!("Hello, {}!", name);
+}
+
+// 返回 Result
+fn divide(a: i32, b: i32) -> Result<i32, &'static str> {
+    if b == 0 {
+        Err("division by zero")
+    } else {
+        Ok(a / b)
+    }
+}
+
+// ==================== 闭包 ====================
+let add = |a, b| a + b;
+let add_typed = |a: i32, b: i32| -> i32 { a + b };
+
+// 捕获环境
+let x = 10;
+let add_x = |n| n + x;     // 借用 x
+let take_x = move |n| n + x; // 移动 x
+
+// ==================== 闭包 trait ====================
+// Fn: 借用捕获 (&self)
+// FnMut: 可变借用 (&mut self)
+// FnOnce: 获取所有权 (self)
+
+fn apply<F>(f: F) where F: Fn(i32) -> i32 {
+    println!("{}", f(10));
+}
+
+fn apply_mut<F>(mut f: F) where F: FnMut(i32) -> i32 {
+    println!("{}", f(10));
+}
+
+fn apply_once<F>(f: F) where F: FnOnce(i32) -> i32 {
+    println!("{}", f(10));
+}
+
+// ==================== 函数指针 ====================
+fn apply_fn(f: fn(i32) -> i32, x: i32) -> i32 {
+    f(x)
+}
+
+// ==================== 泛型函数 ====================
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn map<T, U, F>(vec: Vec<T>, f: F) -> Vec<U>
+where
+    F: Fn(T) -> U,
+{
+    vec.into_iter().map(f).collect()
+}
+
+// ==================== impl Trait ====================
+fn make_adder(x: i32) -> impl Fn(i32) -> i32 {
+    move |y| x + y
+}
+
+fn iter_numbers() -> impl Iterator<Item = i32> {
+    (0..10).filter(|x| x % 2 == 0)
+}
+
+// ==================== 方法 ====================
+struct Rectangle {
+    width: f64,
+    height: f64,
+}
+
+impl Rectangle {
+    // 关联函数 (构造器)
+    fn new(width: f64, height: f64) -> Self {
+        Self { width, height }
+    }
+    
+    // 方法
+    fn area(&self) -> f64 {
+        self.width * self.height
+    }
+    
+    fn scale(&mut self, factor: f64) {
+        self.width *= factor;
+        self.height *= factor;
+    }
+}
+```
+
+---
+
+## 🌐 HTTP 客户端 (Fetch)
+
+### HTTP 客户端概览
+
+| 语言 | 内置/推荐库 | 异步支持 | 特点 |
+|------|-------------|----------|------|
+| TypeScript | fetch / axios | ✅ | 原生 Promise |
+| Python | requests / httpx | ✅ (httpx) | 简洁 API |
+| Go | net/http | ✅ (goroutine) | 标准库完善 |
+| Rust | reqwest | ✅ | 类型安全 |
+
+### TypeScript HTTP 请求
+
+```typescript
+// ==================== fetch API ====================
+// GET
+const response = await fetch('https://api.example.com/users');
+const users = await response.json();
+
+// POST
+const newUser = await fetch('https://api.example.com/users', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'John', age: 30 }),
+});
+
+// 完整示例
+async function fetchData<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+// ==================== 超时与取消 ====================
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 5000);
+
+const response = await fetch(url, {
+  signal: controller.signal,
+});
+
+// ==================== axios ====================
+import axios from 'axios';
+
+// 创建实例
+const api = axios.create({
+  baseURL: 'https://api.example.com',
+  timeout: 5000,
+  headers: { 'Authorization': 'Bearer token' },
+});
+
+// 请求
+const { data } = await api.get('/users');
+await api.post('/users', { name: 'John' });
+
+// 拦截器
+api.interceptors.request.use(config => {
+  config.headers.Authorization = `Bearer ${getToken()}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // 处理认证错误
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+### Python HTTP 请求
+
+```python
+import requests
+import httpx
+
+# ==================== requests (同步) ====================
+# GET
+response = requests.get('https://api.example.com/users')
+users = response.json()
+
+# POST
+response = requests.post(
+    'https://api.example.com/users',
+    json={'name': 'John', 'age': 30},
+    headers={'Authorization': 'Bearer token'},
+    timeout=5
+)
+
+# Session (连接复用)
+with requests.Session() as session:
+    session.headers.update({'Authorization': 'Bearer token'})
+    response = session.get('/users')
+
+# ==================== httpx (同步+异步) ====================
+# 同步
+response = httpx.get('https://api.example.com/users')
+
+# 异步
+async with httpx.AsyncClient() as client:
+    response = await client.get('https://api.example.com/users')
+    users = response.json()
+
+# 异步并发
+async with httpx.AsyncClient() as client:
+    tasks = [client.get(url) for url in urls]
+    responses = await asyncio.gather(*tasks)
+
+# 客户端配置
+client = httpx.AsyncClient(
+    base_url='https://api.example.com',
+    timeout=5.0,
+    headers={'Authorization': 'Bearer token'},
+)
+```
+
+### Go HTTP 请求
+
+```go
+import (
+    "net/http"
+    "encoding/json"
+    "bytes"
+    "time"
+)
+
+// ==================== 基本请求 ====================
+// GET
+resp, err := http.Get("https://api.example.com/users")
+if err != nil {
+    return err
+}
+defer resp.Body.Close()
+
+var users []User
+json.NewDecoder(resp.Body).Decode(&users)
+
+// POST
+data := map[string]interface{}{"name": "John", "age": 30}
+jsonData, _ := json.Marshal(data)
+
+resp, err := http.Post(
+    "https://api.example.com/users",
+    "application/json",
+    bytes.NewBuffer(jsonData),
+)
+
+// ==================== 自定义客户端 ====================
+client := &http.Client{
+    Timeout: 5 * time.Second,
+    Transport: &http.Transport{
+        MaxIdleConns:        100,
+        MaxIdleConnsPerHost: 10,
+    },
+}
+
+// 自定义请求
+req, _ := http.NewRequest("GET", url, nil)
+req.Header.Set("Authorization", "Bearer token")
+
+resp, err := client.Do(req)
+
+// ==================== 带 Context ====================
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+resp, err := client.Do(req)
+```
+
+### Rust HTTP 请求
+
+```rust
+use reqwest;
+
+// ==================== 基本请求 ====================
+// GET
+let users: Vec<User> = reqwest::get("https://api.example.com/users")
+    .await?
+    .json()
+    .await?;
+
+// POST
+let client = reqwest::Client::new();
+let new_user = client
+    .post("https://api.example.com/users")
+    .json(&serde_json::json!({"name": "John", "age": 30}))
+    .send()
+    .await?;
+
+// ==================== 客户端配置 ====================
+let client = reqwest::Client::builder()
+    .timeout(Duration::from_secs(5))
+    .default_headers({
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("Authorization", "Bearer token".parse().unwrap());
+        headers
+    })
+    .build()?;
+
+// ==================== 错误处理 ====================
+let response = client.get(url).send().await?;
+
+if response.status().is_success() {
+    let data: Data = response.json().await?;
+} else {
+    eprintln!("Error: {}", response.status());
+}
+```
+
+---
+
+## 🖥️ HTTP & RPC 服务器
+
+### 框架概览
+
+| 语言 | HTTP 框架 | RPC 框架 |
+|------|-----------|----------|
+| TypeScript | Express, Fastify, Hono | tRPC, gRPC |
+| Python | FastAPI, Flask | gRPC, Thrift |
+| Go | net/http, Gin, Echo | gRPC, Twirp |
+| Rust | Axum, Actix-web | tonic (gRPC) |
+
+### TypeScript HTTP 服务器
+
+```typescript
+// ==================== Express ====================
+import express from 'express';
+const app = express();
+app.use(express.json());
+
+app.get('/users', async (req, res) => {
+  const users = await db.getUsers();
+  res.json(users);
+});
+
+app.post('/users', async (req, res) => {
+  const user = await db.createUser(req.body);
+  res.status(201).json(user);
+});
+
+app.listen(3000);
+
+// ==================== Fastify ====================
+import Fastify from 'fastify';
+const fastify = Fastify({ logger: true });
+
+fastify.get('/users', async (request, reply) => {
+  return await db.getUsers();
+});
+
+await fastify.listen({ port: 3000 });
+
+// ==================== Hono (边缘计算友好) ====================
+import { Hono } from 'hono';
+const app = new Hono();
+
+app.get('/users', (c) => c.json(users));
+app.post('/users', async (c) => {
+  const body = await c.req.json();
+  return c.json(body, 201);
+});
+
+export default app;
+```
+
+### Python HTTP 服务器
+
+```python
+# ==================== FastAPI ====================
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class User(BaseModel):
+    name: str
+    age: int
+
+@app.get("/users")
+async def get_users():
+    return await db.get_users()
+
+@app.post("/users", status_code=201)
+async def create_user(user: User):
+    return await db.create_user(user)
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: int):
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Not found")
+    return user
+
+# 运行: uvicorn main:app --reload
+
+# ==================== Flask ====================
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/users', methods=['GET'])
+def get_users():
+    return jsonify(db.get_users())
+
+@app.route('/users', methods=['POST'])
+def create_user():
+    return jsonify(db.create_user(request.json)), 201
+```
+
+### Go HTTP 服务器
+
+```go
+// ==================== net/http ====================
+func main() {
+    http.HandleFunc("/users", handleUsers)
+    http.ListenAndServe(":3000", nil)
+}
+
+func handleUsers(w http.ResponseWriter, r *http.Request) {
+    switch r.Method {
+    case "GET":
+        users := db.GetUsers()
+        json.NewEncoder(w).Encode(users)
+    case "POST":
+        var user User
+        json.NewDecoder(r.Body).Decode(&user)
+        db.CreateUser(user)
+        w.WriteHeader(http.StatusCreated)
+    }
+}
+
+// ==================== Gin ====================
+import "github.com/gin-gonic/gin"
+
+func main() {
+    r := gin.Default()
+    
+    r.GET("/users", func(c *gin.Context) {
+        c.JSON(200, db.GetUsers())
+    })
+    
+    r.POST("/users", func(c *gin.Context) {
+        var user User
+        c.BindJSON(&user)
+        db.CreateUser(user)
+        c.JSON(201, user)
+    })
+    
+    r.GET("/users/:id", func(c *gin.Context) {
+        id := c.Param("id")
+        c.JSON(200, db.GetUser(id))
+    })
+    
+    r.Run(":3000")
+}
+```
+
+### Rust HTTP 服务器
+
+```rust
+// ==================== Axum ====================
+use axum::{routing::{get, post}, Router, Json, extract::Path};
+
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/users", get(get_users).post(create_user))
+        .route("/users/:id", get(get_user));
+    
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn get_users() -> Json<Vec<User>> {
+    Json(db::get_users().await)
+}
+
+async fn create_user(Json(user): Json<CreateUser>) -> (StatusCode, Json<User>) {
+    let user = db::create_user(user).await;
+    (StatusCode::CREATED, Json(user))
+}
+
+async fn get_user(Path(id): Path<u32>) -> Result<Json<User>, StatusCode> {
+    db::get_user(id).await
+        .map(Json)
+        .ok_or(StatusCode::NOT_FOUND)
+}
+```
+
+### gRPC 服务器对比
+
+```protobuf
+// user.proto
+syntax = "proto3";
+package user;
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc CreateUser(CreateUserRequest) returns (User);
+}
+
+message User {
+  int32 id = 1;
+  string name = 2;
+}
+```
+
+**Go gRPC:**
+```go
+type server struct {
+    pb.UnimplementedUserServiceServer
+}
+
+func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
+    return &pb.User{Id: req.Id, Name: "John"}, nil
+}
+
+func main() {
+    lis, _ := net.Listen("tcp", ":50051")
+    s := grpc.NewServer()
+    pb.RegisterUserServiceServer(s, &server{})
+    s.Serve(lis)
+}
+```
+
+**Python gRPC:**
+```python
+class UserServicer(user_pb2_grpc.UserServiceServicer):
+    def GetUser(self, request, context):
+        return user_pb2.User(id=request.id, name="John")
+
+server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+user_pb2_grpc.add_UserServiceServicer_to_server(UserServicer(), server)
+server.add_insecure_port('[::]:50051')
+server.start()
+```
+
+**Rust gRPC (tonic):**
+```rust
+#[tonic::async_trait]
+impl UserService for MyUserService {
+    async fn get_user(&self, request: Request<GetUserRequest>) 
+        -> Result<Response<User>, Status> {
+        Ok(Response::new(User {
+            id: request.into_inner().id,
+            name: "John".to_string(),
+        }))
+    }
+}
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
