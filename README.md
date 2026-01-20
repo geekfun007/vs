@@ -4425,6 +4425,1510 @@ registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
 
 ---
 
+## 🔍 正则表达式
+
+### 正则表达式概览
+
+| 语言 | 正则引擎 | 语法风格 | 特点 |
+|------|----------|----------|------|
+| TypeScript | V8 RegExp | Perl 风格 | 内置、支持 /flag |
+| Python | re 模块 | Perl 风格 | 功能完整、verbose 模式 |
+| Go | regexp (RE2) | RE2 | 保证线性时间、无回溯 |
+| Rust | regex crate | RE2 类似 | 高性能、无回溯 |
+
+### TypeScript 正则表达式
+
+```typescript
+// ==================== 创建正则 ====================
+
+// 字面量
+const re1 = /hello/i;
+const re2 = /\d{3}-\d{4}/g;
+
+// 构造函数
+const re3 = new RegExp('hello', 'i');
+const re4 = new RegExp(`user_${userId}`, 'g');  // 动态模式
+
+// ==================== 标志 (flags) ====================
+
+/pattern/g    // global - 全局匹配
+/pattern/i    // ignoreCase - 忽略大小写
+/pattern/m    // multiline - 多行模式 (^$ 匹配行首行尾)
+/pattern/s    // dotAll - . 匹配换行符
+/pattern/u    // unicode - Unicode 模式
+/pattern/y    // sticky - 粘性匹配
+/pattern/d    // hasIndices - 返回匹配索引 (ES2022)
+
+// 组合使用
+/pattern/gim
+
+// ==================== 匹配方法 ====================
+
+const text = "Hello World, hello universe";
+const re = /hello/gi;
+
+// test - 返回布尔值
+re.test(text);                    // true
+
+// exec - 返回匹配详情 (带 g 时可迭代)
+let match;
+while ((match = re.exec(text)) !== null) {
+  console.log(match[0], match.index);
+}
+// "Hello" 0
+// "hello" 13
+
+// match - 字符串方法
+text.match(/hello/i);             // ["Hello", index: 0, ...]
+text.match(/hello/gi);            // ["Hello", "hello"]
+
+// matchAll - 返回迭代器 (ES2020)
+for (const m of text.matchAll(/hello/gi)) {
+  console.log(m[0], m.index);
+}
+
+// search - 返回索引
+text.search(/world/i);            // 6
+
+// ==================== 替换 ====================
+
+// replace
+text.replace(/hello/i, 'Hi');     // "Hi World, hello universe"
+text.replace(/hello/gi, 'Hi');    // "Hi World, Hi universe"
+
+// 使用函数
+text.replace(/hello/gi, (match, offset) => {
+  return match.toUpperCase();
+});
+
+// 替换模式
+"John Smith".replace(/(\w+) (\w+)/, '$2, $1');  // "Smith, John"
+
+// replaceAll (ES2021)
+text.replaceAll('hello', 'Hi');   // 字符串替换
+text.replaceAll(/hello/gi, 'Hi'); // 必须有 g 标志
+
+// ==================== 分割 ====================
+
+"a, b,  c".split(/,\s*/);         // ["a", "b", "c"]
+
+// 保留分隔符
+"a1b2c3".split(/(\d)/);           // ["a", "1", "b", "2", "c", "3"]
+
+// ==================== 捕获组 ====================
+
+const dateRe = /(\d{4})-(\d{2})-(\d{2})/;
+const dateMatch = "2024-03-15".match(dateRe);
+dateMatch[0];  // "2024-03-15" (完整匹配)
+dateMatch[1];  // "2024" (第一个组)
+dateMatch[2];  // "03"
+dateMatch[3];  // "15"
+
+// 命名捕获组 (ES2018)
+const namedRe = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+const namedMatch = "2024-03-15".match(namedRe);
+namedMatch.groups.year;   // "2024"
+namedMatch.groups.month;  // "03"
+namedMatch.groups.day;    // "15"
+
+// 非捕获组
+/(?:hello|hi) world/;     // 不创建捕获组
+
+// 替换中使用命名组
+"2024-03-15".replace(namedRe, '$<day>/$<month>/$<year>');
+// "15/03/2024"
+
+// ==================== 断言 ====================
+
+// 前瞻断言
+/foo(?=bar)/;    // 正向前瞻: foo 后面是 bar
+/foo(?!bar)/;    // 负向前瞻: foo 后面不是 bar
+
+// 后顾断言 (ES2018)
+/(?<=@)\w+/;     // 正向后顾: @ 后面的单词
+/(?<!@)\w+/;     // 负向后顾: 前面不是 @ 的单词
+
+// 示例
+"foobar foobaz".match(/foo(?=bar)/g);  // ["foo"]
+"$100 €200".match(/(?<=\$)\d+/);       // ["100"]
+
+// ==================== 常用模式 ====================
+
+// 邮箱
+const emailRe = /^[\w.-]+@[\w.-]+\.\w{2,}$/;
+
+// URL
+const urlRe = /^https?:\/\/[\w.-]+(?:\/[\w.-]*)*\/?$/;
+
+// 手机号 (中国)
+const phoneRe = /^1[3-9]\d{9}$/;
+
+// IP 地址
+const ipRe = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+
+// 转义特殊字符
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+```
+
+### Python 正则表达式
+
+```python
+import re
+
+# ==================== 创建正则 ====================
+
+# 原始字符串 (推荐)
+pattern = r'\d{3}-\d{4}'
+
+# 编译正则 (重复使用时推荐)
+compiled = re.compile(r'\d{3}-\d{4}')
+compiled = re.compile(r'''
+    \d{3}   # 区号
+    -       # 分隔符
+    \d{4}   # 号码
+''', re.VERBOSE)  # 允许注释和空白
+
+# ==================== 标志 (flags) ====================
+
+re.IGNORECASE  # re.I - 忽略大小写
+re.MULTILINE   # re.M - 多行模式
+re.DOTALL      # re.S - . 匹配换行
+re.VERBOSE     # re.X - 允许注释
+re.ASCII       # re.A - ASCII 匹配
+re.UNICODE     # re.U - Unicode 匹配 (默认)
+
+# 组合
+re.compile(r'pattern', re.I | re.M)
+
+# 内联标志
+re.search(r'(?i)hello', text)  # 等同于 re.I
+
+# ==================== 匹配方法 ====================
+
+text = "Hello World, hello universe"
+
+# search - 搜索第一个匹配
+match = re.search(r'hello', text, re.I)
+if match:
+    match.group()     # "Hello"
+    match.start()     # 0
+    match.end()       # 5
+    match.span()      # (0, 5)
+
+# match - 从开头匹配
+re.match(r'Hello', text)      # 匹配
+re.match(r'World', text)      # None (不是从开头)
+
+# fullmatch - 完整匹配
+re.fullmatch(r'\d+', '123')   # 匹配
+re.fullmatch(r'\d+', '123a')  # None
+
+# findall - 返回所有匹配的列表
+re.findall(r'hello', text, re.I)  # ['Hello', 'hello']
+
+# 带组时返回元组
+re.findall(r'(\w+)@(\w+)', "a@b c@d")  # [('a', 'b'), ('c', 'd')]
+
+# finditer - 返回迭代器
+for m in re.finditer(r'hello', text, re.I):
+    print(m.group(), m.start())
+
+# ==================== 替换 ====================
+
+# sub - 替换
+re.sub(r'hello', 'Hi', text, flags=re.I)  # "Hi World, Hi universe"
+
+# 限制次数
+re.sub(r'hello', 'Hi', text, count=1, flags=re.I)
+
+# 使用函数
+def upper_repl(match):
+    return match.group().upper()
+re.sub(r'hello', upper_repl, text, flags=re.I)
+
+# 使用组引用
+re.sub(r'(\w+) (\w+)', r'\2, \1', "John Smith")  # "Smith, John"
+
+# subn - 返回 (新字符串, 替换次数)
+re.subn(r'hello', 'Hi', text, flags=re.I)  # ("Hi World, Hi universe", 2)
+
+# ==================== 分割 ====================
+
+re.split(r',\s*', "a, b,  c")     # ['a', 'b', 'c']
+re.split(r'(\d)', "a1b2c3")       # ['a', '1', 'b', '2', 'c', '3', '']
+re.split(r',', "a,b,c", maxsplit=1)  # ['a', 'b,c']
+
+# ==================== 捕获组 ====================
+
+# 基本组
+match = re.search(r'(\d{4})-(\d{2})-(\d{2})', "2024-03-15")
+match.group(0)    # "2024-03-15" (完整匹配)
+match.group(1)    # "2024"
+match.group(2)    # "03"
+match.groups()    # ('2024', '03', '15')
+
+# 命名组
+match = re.search(r'(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})', "2024-03-15")
+match.group('year')   # "2024"
+match.groupdict()     # {'year': '2024', 'month': '03', 'day': '15'}
+
+# 替换中使用命名组
+re.sub(r'(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})', r'\g<d>/\g<m>/\g<y>', "2024-03-15")
+# "15/03/2024"
+
+# 非捕获组
+re.search(r'(?:hello|hi) world', "hello world")
+
+# ==================== 断言 ====================
+
+# 前瞻
+re.search(r'foo(?=bar)', "foobar")    # 匹配 "foo"
+re.search(r'foo(?!bar)', "foobaz")    # 匹配 "foo"
+
+# 后顾
+re.search(r'(?<=@)\w+', "user@domain")   # 匹配 "domain"
+re.search(r'(?<!@)\w+', "hello")         # 匹配 "hello"
+
+# ==================== 高级特性 ====================
+
+# 条件匹配
+# (?(id)yes|no) - 如果组 id 匹配，则使用 yes，否则 no
+re.search(r'(<)?(\w+)(?(1)>|)', "<tag>")   # 匹配有/无括号的标签
+
+# 原子组 (Python 3.11+)
+re.search(r'(?>a+)b', "aaab")  # 原子组，不回溯
+
+# 转义
+re.escape('hello.world?')  # 'hello\\.world\\?'
+```
+
+### Go 正则表达式
+
+```go
+package main
+
+import (
+    "fmt"
+    "regexp"
+)
+
+// ==================== 创建正则 ====================
+
+func main() {
+    // 编译正则
+    re, err := regexp.Compile(`\d{3}-\d{4}`)
+    if err != nil {
+        panic(err)
+    }
+    
+    // MustCompile - 编译失败时 panic
+    re = regexp.MustCompile(`\d{3}-\d{4}`)
+    
+    // POSIX 语法
+    rePosix := regexp.MustCompilePOSIX(`[[:digit:]]+`)
+}
+
+// ==================== 标志 (内联) ====================
+
+/*
+Go 使用内联标志:
+(?i)  - 忽略大小写
+(?m)  - 多行模式
+(?s)  - . 匹配换行
+(?U)  - 非贪婪模式
+*/
+
+re := regexp.MustCompile(`(?i)hello`)  // 忽略大小写
+re = regexp.MustCompile(`(?m)^line`)   // 多行模式
+
+// ==================== 匹配方法 ====================
+
+text := "Hello World, hello universe"
+re := regexp.MustCompile(`(?i)hello`)
+
+// MatchString - 是否匹配
+re.MatchString(text)              // true
+
+// FindString - 返回第一个匹配
+re.FindString(text)               // "Hello"
+
+// FindAllString - 返回所有匹配
+re.FindAllString(text, -1)        // ["Hello", "hello"]
+re.FindAllString(text, 1)         // ["Hello"] (限制数量)
+
+// FindStringIndex - 返回索引
+re.FindStringIndex(text)          // [0, 5]
+
+// FindAllStringIndex - 所有索引
+re.FindAllStringIndex(text, -1)   // [[0, 5], [13, 18]]
+
+// ==================== 捕获组 ====================
+
+dateRe := regexp.MustCompile(`(\d{4})-(\d{2})-(\d{2})`)
+
+// FindStringSubmatch - 返回组
+match := dateRe.FindStringSubmatch("2024-03-15")
+// ["2024-03-15", "2024", "03", "15"]
+
+// FindAllStringSubmatch
+matches := dateRe.FindAllStringSubmatch("2024-03-15 and 2025-01-01", -1)
+// [["2024-03-15", "2024", "03", "15"], ["2025-01-01", "2025", "01", "01"]]
+
+// 命名组
+namedRe := regexp.MustCompile(`(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})`)
+match = namedRe.FindStringSubmatch("2024-03-15")
+names := namedRe.SubexpNames()  // ["", "year", "month", "day"]
+
+// 获取命名组值
+for i, name := range names {
+    if name != "" {
+        fmt.Printf("%s: %s\n", name, match[i])
+    }
+}
+
+// ==================== 替换 ====================
+
+// ReplaceAllString
+re := regexp.MustCompile(`(?i)hello`)
+re.ReplaceAllString(text, "Hi")   // "Hi World, Hi universe"
+
+// 使用组引用
+dateRe.ReplaceAllString("2024-03-15", "$3/$2/$1")  // "15/03/2024"
+
+// ReplaceAllStringFunc - 使用函数
+re.ReplaceAllStringFunc(text, strings.ToUpper)  // "HELLO World, HELLO universe"
+
+// ReplaceAllLiteralString - 字面替换 (不解析 $)
+re.ReplaceAllLiteralString(text, "$1")  // "$1 World, $1 universe"
+
+// ==================== 分割 ====================
+
+re := regexp.MustCompile(`,\s*`)
+re.Split("a, b,  c", -1)          // ["a", "b", "c"]
+re.Split("a, b,  c", 2)           // ["a", "b,  c"]
+
+// ==================== 字节操作 ====================
+
+// 所有方法都有字节版本
+re := regexp.MustCompile(`\d+`)
+re.Match([]byte("hello123"))              // true
+re.Find([]byte("hello123"))               // []byte("123")
+re.ReplaceAll([]byte("a1b2"), []byte("X")) // []byte("aXbX")
+
+// ==================== 性能优化 ====================
+
+// 预编译正则
+var (
+    emailRe = regexp.MustCompile(`^[\w.-]+@[\w.-]+\.\w{2,}$`)
+    phoneRe = regexp.MustCompile(`^1[3-9]\d{9}$`)
+)
+
+// Longest - 最长匹配
+re := regexp.MustCompile(`a+`)
+re.Longest()
+re.FindString("aaa")  // 总是返回最长匹配
+
+// ==================== RE2 限制 ====================
+
+/*
+Go 使用 RE2 引擎，不支持:
+- 反向引用 (\1, \2)
+- 前瞻/后顾断言 (?=, (?!, (?<=, (?<!）
+- 原子组 (?>)
+- 占有量词 (++, *+, ?+)
+
+优点: 保证 O(n) 时间复杂度，不会被恶意输入攻击
+*/
+```
+
+### Rust 正则表达式
+
+```rust
+use regex::{Regex, RegexBuilder, Captures};
+
+// ==================== 创建正则 ====================
+
+fn main() {
+    // 基本创建
+    let re = Regex::new(r"\d{3}-\d{4}").unwrap();
+    
+    // 使用 RegexBuilder
+    let re = RegexBuilder::new(r"hello")
+        .case_insensitive(true)
+        .multi_line(true)
+        .build()
+        .unwrap();
+    
+    // 编译时检查 (regex-macro)
+    // let re = regex!(r"\d+");  // 编译时验证
+}
+
+// ==================== 标志 ====================
+
+// 内联标志
+let re = Regex::new(r"(?i)hello").unwrap();      // 忽略大小写
+let re = Regex::new(r"(?m)^line").unwrap();      // 多行模式
+let re = Regex::new(r"(?s).+").unwrap();         // . 匹配换行
+let re = Regex::new(r"(?x)
+    \d{4}   # year
+    -
+    \d{2}   # month
+").unwrap();  // 允许注释和空白
+
+// 组合
+let re = Regex::new(r"(?im)hello").unwrap();
+
+// ==================== 匹配方法 ====================
+
+let text = "Hello World, hello universe";
+let re = Regex::new(r"(?i)hello").unwrap();
+
+// is_match - 是否匹配
+re.is_match(text);                    // true
+
+// find - 返回第一个匹配
+if let Some(m) = re.find(text) {
+    m.as_str();   // "Hello"
+    m.start();    // 0
+    m.end();      // 5
+}
+
+// find_iter - 迭代所有匹配
+for m in re.find_iter(text) {
+    println!("{} at {}", m.as_str(), m.start());
+}
+
+// ==================== 捕获组 ====================
+
+let date_re = Regex::new(r"(\d{4})-(\d{2})-(\d{2})").unwrap();
+
+// captures - 捕获组
+if let Some(caps) = date_re.captures("2024-03-15") {
+    caps.get(0).unwrap().as_str();  // "2024-03-15"
+    caps.get(1).unwrap().as_str();  // "2024"
+    caps.get(2).unwrap().as_str();  // "03"
+    caps.get(3).unwrap().as_str();  // "15"
+    
+    // 使用索引
+    &caps[0];  // "2024-03-15"
+    &caps[1];  // "2024"
+}
+
+// captures_iter - 迭代所有捕获
+for caps in date_re.captures_iter("2024-03-15 and 2025-01-01") {
+    println!("{}", &caps[0]);
+}
+
+// 命名捕获组
+let named_re = Regex::new(r"(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})").unwrap();
+if let Some(caps) = named_re.captures("2024-03-15") {
+    &caps["year"];    // "2024"
+    &caps["month"];   // "03"
+    &caps["day"];     // "15"
+    
+    caps.name("year").unwrap().as_str();  // "2024"
+}
+
+// ==================== 替换 ====================
+
+let re = Regex::new(r"(?i)hello").unwrap();
+
+// replace - 替换第一个
+re.replace(text, "Hi");                   // "Hi World, hello universe"
+
+// replace_all - 替换所有
+re.replace_all(text, "Hi");               // "Hi World, Hi universe"
+
+// 使用捕获组
+let date_re = Regex::new(r"(\d{4})-(\d{2})-(\d{2})").unwrap();
+date_re.replace("2024-03-15", "$3/$2/$1");  // "15/03/2024"
+
+// 命名组
+let named_re = Regex::new(r"(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})").unwrap();
+named_re.replace("2024-03-15", "$d/$m/$y");  // "15/03/2024"
+
+// 使用闭包
+re.replace_all(text, |caps: &Captures| {
+    caps[0].to_uppercase()
+});  // "HELLO World, HELLO universe"
+
+// replacen - 替换指定次数
+re.replacen(text, 1, "Hi");               // "Hi World, hello universe"
+
+// ==================== 分割 ====================
+
+let re = Regex::new(r",\s*").unwrap();
+let parts: Vec<&str> = re.split("a, b,  c").collect();
+// ["a", "b", "c"]
+
+let parts: Vec<&str> = re.splitn("a, b,  c", 2).collect();
+// ["a", "b,  c"]
+
+// ==================== RegexSet ====================
+
+use regex::RegexSet;
+
+// 同时匹配多个模式
+let set = RegexSet::new(&[
+    r"\d+",
+    r"\w+",
+    r"hello",
+]).unwrap();
+
+let matches: Vec<_> = set.matches("hello123").into_iter().collect();
+// [0, 1, 2] - 匹配的模式索引
+
+set.is_match("hello");  // true
+
+// ==================== 性能优化 ====================
+
+use once_cell::sync::Lazy;
+
+// 全局预编译 (推荐)
+static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[\w.-]+@[\w.-]+\.\w{2,}$").unwrap()
+});
+
+static PHONE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^1[3-9]\d{9}$").unwrap()
+});
+
+// 使用
+fn is_valid_email(email: &str) -> bool {
+    EMAIL_RE.is_match(email)
+}
+
+// ==================== bytes 版本 ====================
+
+use regex::bytes::Regex as BytesRegex;
+
+let re = BytesRegex::new(r"\d+").unwrap();
+re.is_match(b"hello123");
+re.find(b"hello123");
+
+// ==================== regex 限制 ====================
+
+/*
+Rust regex 类似 RE2，不支持:
+- 反向引用
+- 前瞻/后顾断言
+
+使用 fancy-regex crate 获取完整功能:
+use fancy_regex::Regex;
+let re = Regex::new(r"(?<=@)\w+").unwrap();
+*/
+```
+
+### 正则表达式对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 引擎            │ V8 (回溯)      │ re (回溯)      │ RE2 (DFA)      │ regex (DFA)    │
+│ 前瞻断言        │ ✅             │ ✅             │ ❌             │ ❌ (fancy-regex)│
+│ 后顾断言        │ ✅             │ ✅             │ ❌             │ ❌ (fancy-regex)│
+│ 反向引用        │ ✅             │ ✅             │ ❌             │ ❌ (fancy-regex)│
+│ 命名组          │ ✅ (?<name>)   │ ✅ (?P<name>)  │ ✅ (?P<name>)  │ ✅ (?P<name>)  │
+│ Unicode        │ ✅ /u          │ ✅ 默认        │ ✅ 默认        │ ✅ 默认        │
+│ 预编译          │ new RegExp     │ re.compile     │ MustCompile    │ Regex::new     │
+│ 时间复杂度      │ O(2^n) 最坏    │ O(2^n) 最坏    │ O(n) 保证      │ O(n) 保证      │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 常用正则模式
+
+```
+┌────────────────────┬──────────────────────────────────────────────────┐
+│ 用途               │ 模式                                              │
+├────────────────────┼──────────────────────────────────────────────────┤
+│ 邮箱               │ ^[\w.-]+@[\w.-]+\.\w{2,}$                        │
+│ URL                │ ^https?://[\w.-]+(?:/[\w.-]*)*/?$                │
+│ 手机号 (中国)      │ ^1[3-9]\d{9}$                                    │
+│ IP 地址            │ ^(?:\d{1,3}\.){3}\d{1,3}$                        │
+│ 日期 (YYYY-MM-DD)  │ ^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$│
+│ 时间 (HH:MM:SS)    │ ^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$              │
+│ 十六进制颜色       │ ^#(?:[0-9a-fA-F]{3}){1,2}$                       │
+│ 中文字符           │ [\u4e00-\u9fa5]+                                 │
+│ 空白行             │ ^\s*$                                             │
+│ HTML 标签          │ <([a-z]+)[^>]*>.*?</\1>                          │
+└────────────────────┴──────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔄 迭代器与生成器
+
+### 迭代器概览
+
+| 语言 | 迭代器协议 | 生成器语法 | 惰性求值 | 特点 |
+|------|------------|------------|----------|------|
+| TypeScript | Symbol.iterator | function* | ✅ | 与 JS 一致 |
+| Python | \_\_iter\_\_/\_\_next\_\_ | yield | ✅ | 最灵活 |
+| Go | 无内置 (range) | 无 | 部分 | channel 模拟 |
+| Rust | Iterator trait | 无 (迭代器适配器) | ✅ | 零成本抽象 |
+
+### TypeScript 迭代器与生成器
+
+```typescript
+// ==================== 可迭代协议 ====================
+
+// 实现 Iterable 接口
+class Range implements Iterable<number> {
+  constructor(
+    private start: number,
+    private end: number
+  ) {}
+
+  [Symbol.iterator](): Iterator<number> {
+    let current = this.start;
+    const end = this.end;
+    
+    return {
+      next(): IteratorResult<number> {
+        if (current <= end) {
+          return { value: current++, done: false };
+        }
+        return { value: undefined, done: true };
+      }
+    };
+  }
+}
+
+// 使用
+for (const n of new Range(1, 5)) {
+  console.log(n);  // 1, 2, 3, 4, 5
+}
+
+[...new Range(1, 3)];  // [1, 2, 3]
+
+// ==================== 生成器函数 ====================
+
+function* range(start: number, end: number): Generator<number> {
+  for (let i = start; i <= end; i++) {
+    yield i;
+  }
+}
+
+// 使用
+for (const n of range(1, 5)) {
+  console.log(n);
+}
+
+// 生成器对象方法
+const gen = range(1, 3);
+gen.next();  // { value: 1, done: false }
+gen.next();  // { value: 2, done: false }
+gen.next();  // { value: 3, done: false }
+gen.next();  // { value: undefined, done: true }
+
+// ==================== 无限生成器 ====================
+
+function* naturals(): Generator<number> {
+  let n = 0;
+  while (true) {
+    yield n++;
+  }
+}
+
+function* fibonacci(): Generator<number> {
+  let [a, b] = [0, 1];
+  while (true) {
+    yield a;
+    [a, b] = [b, a + b];
+  }
+}
+
+// ==================== yield* 委托 ====================
+
+function* concat<T>(...iterables: Iterable<T>[]): Generator<T> {
+  for (const iterable of iterables) {
+    yield* iterable;  // 委托给另一个可迭代对象
+  }
+}
+
+[...concat([1, 2], [3, 4])];  // [1, 2, 3, 4]
+
+// ==================== 双向通信 ====================
+
+function* accumulator(): Generator<number, void, number> {
+  let total = 0;
+  while (true) {
+    const value = yield total;
+    if (value === undefined) break;
+    total += value;
+  }
+}
+
+const acc = accumulator();
+acc.next();       // { value: 0 }
+acc.next(10);     // { value: 10 }
+acc.next(20);     // { value: 30 }
+acc.return(0);    // 终止生成器
+
+// ==================== 异步生成器 ====================
+
+async function* fetchPages(urls: string[]): AsyncGenerator<Response> {
+  for (const url of urls) {
+    yield await fetch(url);
+  }
+}
+
+async function* paginate<T>(
+  fetchFn: (page: number) => Promise<T[]>
+): AsyncGenerator<T> {
+  let page = 1;
+  while (true) {
+    const items = await fetchFn(page++);
+    if (items.length === 0) break;
+    yield* items;
+  }
+}
+
+// 使用
+for await (const item of paginate(fetchPage)) {
+  console.log(item);
+}
+
+// ==================== 迭代器工具函数 ====================
+
+// take - 取前 n 个
+function* take<T>(iterable: Iterable<T>, n: number): Generator<T> {
+  let i = 0;
+  for (const item of iterable) {
+    if (i++ >= n) break;
+    yield item;
+  }
+}
+
+// map
+function* map<T, U>(
+  iterable: Iterable<T>,
+  fn: (item: T) => U
+): Generator<U> {
+  for (const item of iterable) {
+    yield fn(item);
+  }
+}
+
+// filter
+function* filter<T>(
+  iterable: Iterable<T>,
+  predicate: (item: T) => boolean
+): Generator<T> {
+  for (const item of iterable) {
+    if (predicate(item)) yield item;
+  }
+}
+
+// flatMap
+function* flatMap<T, U>(
+  iterable: Iterable<T>,
+  fn: (item: T) => Iterable<U>
+): Generator<U> {
+  for (const item of iterable) {
+    yield* fn(item);
+  }
+}
+
+// zip
+function* zip<T, U>(
+  iter1: Iterable<T>,
+  iter2: Iterable<U>
+): Generator<[T, U]> {
+  const it1 = iter1[Symbol.iterator]();
+  const it2 = iter2[Symbol.iterator]();
+  while (true) {
+    const r1 = it1.next();
+    const r2 = it2.next();
+    if (r1.done || r2.done) break;
+    yield [r1.value, r2.value];
+  }
+}
+
+// 组合使用
+const result = [...take(
+  filter(
+    map(naturals(), x => x * 2),
+    x => x % 3 === 0
+  ),
+  5
+)];  // [0, 6, 12, 18, 24]
+```
+
+### Python 迭代器与生成器
+
+```python
+from typing import Iterator, Generator, Iterable
+from collections.abc import Iterator as ABCIterator
+
+# ==================== 迭代器协议 ====================
+
+class Range:
+    def __init__(self, start: int, end: int):
+        self.start = start
+        self.end = end
+    
+    def __iter__(self) -> Iterator[int]:
+        return RangeIterator(self.start, self.end)
+
+class RangeIterator:
+    def __init__(self, start: int, end: int):
+        self.current = start
+        self.end = end
+    
+    def __iter__(self) -> 'RangeIterator':
+        return self
+    
+    def __next__(self) -> int:
+        if self.current > self.end:
+            raise StopIteration
+        result = self.current
+        self.current += 1
+        return result
+
+# 使用
+for n in Range(1, 5):
+    print(n)  # 1, 2, 3, 4, 5
+
+list(Range(1, 3))  # [1, 2, 3]
+
+# ==================== 生成器函数 ====================
+
+def range_gen(start: int, end: int) -> Generator[int, None, None]:
+    current = start
+    while current <= end:
+        yield current
+        current += 1
+
+# 使用
+for n in range_gen(1, 5):
+    print(n)
+
+# 生成器对象
+gen = range_gen(1, 3)
+next(gen)  # 1
+next(gen)  # 2
+next(gen)  # 3
+next(gen)  # StopIteration
+
+# ==================== 生成器表达式 ====================
+
+# 类似列表推导，但惰性求值
+squares = (x**2 for x in range(10))
+list(squares)  # [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+
+# 内存高效
+sum(x**2 for x in range(1000000))  # 不创建列表
+
+# 条件过滤
+evens = (x for x in range(10) if x % 2 == 0)
+
+# ==================== 无限生成器 ====================
+
+def naturals() -> Generator[int, None, None]:
+    n = 0
+    while True:
+        yield n
+        n += 1
+
+def fibonacci() -> Generator[int, None, None]:
+    a, b = 0, 1
+    while True:
+        yield a
+        a, b = b, a + b
+
+# ==================== yield from ====================
+
+def concat(*iterables):
+    for iterable in iterables:
+        yield from iterable
+
+list(concat([1, 2], [3, 4]))  # [1, 2, 3, 4]
+
+def flatten(nested):
+    for item in nested:
+        if isinstance(item, (list, tuple)):
+            yield from flatten(item)
+        else:
+            yield item
+
+list(flatten([1, [2, [3, 4]], 5]))  # [1, 2, 3, 4, 5]
+
+# ==================== 双向通信 ====================
+
+def accumulator() -> Generator[int, int, str]:
+    total = 0
+    while True:
+        value = yield total
+        if value is None:
+            break
+        total += value
+    return f"Final: {total}"
+
+acc = accumulator()
+next(acc)           # 0 (启动生成器)
+acc.send(10)        # 10
+acc.send(20)        # 30
+try:
+    acc.send(None)  # 触发 return
+except StopIteration as e:
+    print(e.value)  # "Final: 30"
+
+# throw 发送异常
+gen.throw(ValueError("error"))
+
+# close 关闭生成器
+gen.close()
+
+# ==================== 异步生成器 ====================
+
+async def fetch_pages(urls: list[str]):
+    for url in urls:
+        response = await fetch(url)
+        yield response
+
+async def paginate(fetch_fn):
+    page = 1
+    while True:
+        items = await fetch_fn(page)
+        if not items:
+            break
+        for item in items:
+            yield item
+        page += 1
+
+# 使用
+async for item in paginate(fetch_page):
+    print(item)
+
+# 异步生成器表达式
+async_gen = (await process(x) async for x in async_source)
+
+# ==================== itertools ====================
+
+import itertools
+
+# count - 无限计数
+itertools.count(10, 2)        # 10, 12, 14, 16, ...
+
+# cycle - 无限循环
+itertools.cycle([1, 2, 3])    # 1, 2, 3, 1, 2, 3, ...
+
+# repeat - 重复
+itertools.repeat('A', 3)      # A, A, A
+
+# chain - 连接
+itertools.chain([1, 2], [3, 4])  # 1, 2, 3, 4
+
+# islice - 切片
+itertools.islice(naturals(), 5)  # 0, 1, 2, 3, 4
+itertools.islice(naturals(), 2, 5)  # 2, 3, 4
+
+# takewhile / dropwhile
+itertools.takewhile(lambda x: x < 5, range(10))  # 0, 1, 2, 3, 4
+itertools.dropwhile(lambda x: x < 5, range(10))  # 5, 6, 7, 8, 9
+
+# filterfalse
+itertools.filterfalse(lambda x: x % 2, range(10))  # 0, 2, 4, 6, 8
+
+# accumulate
+itertools.accumulate([1, 2, 3, 4])  # 1, 3, 6, 10
+
+# groupby
+data = [('a', 1), ('a', 2), ('b', 3)]
+for key, group in itertools.groupby(data, key=lambda x: x[0]):
+    print(key, list(group))
+
+# product - 笛卡尔积
+itertools.product([1, 2], ['a', 'b'])  # (1,'a'), (1,'b'), (2,'a'), (2,'b')
+
+# permutations / combinations
+itertools.permutations([1, 2, 3], 2)   # 排列
+itertools.combinations([1, 2, 3], 2)   # 组合
+
+# zip_longest
+itertools.zip_longest([1, 2], [3], fillvalue=0)  # (1, 3), (2, 0)
+
+# starmap
+itertools.starmap(pow, [(2, 3), (3, 2)])  # 8, 9
+
+# ==================== more-itertools ====================
+
+# pip install more-itertools
+import more_itertools
+
+more_itertools.chunked([1,2,3,4,5], 2)    # [[1,2], [3,4], [5]]
+more_itertools.flatten([[1,2], [3,4]])     # 1, 2, 3, 4
+more_itertools.first([1, 2, 3])            # 1
+more_itertools.one([42])                   # 42 (单元素)
+more_itertools.unique_everseen([1,2,1,3])  # 1, 2, 3
+```
+
+### Go 迭代器模式
+
+```go
+package main
+
+import "iter"  // Go 1.23+
+
+// ==================== 传统 for-range ====================
+
+// 切片
+for i, v := range []int{1, 2, 3} {
+    fmt.Println(i, v)
+}
+
+// map
+for k, v := range map[string]int{"a": 1} {
+    fmt.Println(k, v)
+}
+
+// channel
+ch := make(chan int)
+for v := range ch {
+    fmt.Println(v)
+}
+
+// 字符串 (遍历 rune)
+for i, r := range "hello" {
+    fmt.Println(i, string(r))
+}
+
+// ==================== Go 1.23+ 迭代器 ====================
+
+// iter.Seq[V] - 单值序列
+func Range(start, end int) iter.Seq[int] {
+    return func(yield func(int) bool) {
+        for i := start; i <= end; i++ {
+            if !yield(i) {
+                return
+            }
+        }
+    }
+}
+
+// 使用
+for n := range Range(1, 5) {
+    fmt.Println(n)  // 1, 2, 3, 4, 5
+}
+
+// iter.Seq2[K, V] - 键值对序列
+func Enumerate[T any](s []T) iter.Seq2[int, T] {
+    return func(yield func(int, T) bool) {
+        for i, v := range s {
+            if !yield(i, v) {
+                return
+            }
+        }
+    }
+}
+
+for i, v := range Enumerate([]string{"a", "b", "c"}) {
+    fmt.Println(i, v)
+}
+
+// ==================== 迭代器组合 ====================
+
+// Map
+func Map[T, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
+    return func(yield func(U) bool) {
+        for v := range seq {
+            if !yield(fn(v)) {
+                return
+            }
+        }
+    }
+}
+
+// Filter
+func Filter[T any](seq iter.Seq[T], pred func(T) bool) iter.Seq[T] {
+    return func(yield func(T) bool) {
+        for v := range seq {
+            if pred(v) {
+                if !yield(v) {
+                    return
+                }
+            }
+        }
+    }
+}
+
+// Take
+func Take[T any](seq iter.Seq[T], n int) iter.Seq[T] {
+    return func(yield func(T) bool) {
+        i := 0
+        for v := range seq {
+            if i >= n {
+                return
+            }
+            if !yield(v) {
+                return
+            }
+            i++
+        }
+    }
+}
+
+// 组合使用
+for v := range Take(Filter(Map(Range(1, 100), 
+    func(x int) int { return x * 2 }),
+    func(x int) bool { return x%3 == 0 }),
+    5) {
+    fmt.Println(v)  // 6, 12, 18, 24, 30
+}
+
+// ==================== slices/maps 包 ====================
+
+import "slices"
+import "maps"
+
+// slices.All - 转为迭代器
+for i, v := range slices.All([]int{1, 2, 3}) {
+    fmt.Println(i, v)
+}
+
+// slices.Values - 仅值
+for v := range slices.Values([]int{1, 2, 3}) {
+    fmt.Println(v)
+}
+
+// slices.Collect - 收集为切片
+result := slices.Collect(Range(1, 5))  // []int{1, 2, 3, 4, 5}
+
+// maps.All
+for k, v := range maps.All(myMap) {
+    fmt.Println(k, v)
+}
+
+// ==================== Channel 模拟生成器 ====================
+
+func Fibonacci(n int) <-chan int {
+    ch := make(chan int)
+    go func() {
+        defer close(ch)
+        a, b := 0, 1
+        for i := 0; i < n; i++ {
+            ch <- a
+            a, b = b, a+b
+        }
+    }()
+    return ch
+}
+
+for f := range Fibonacci(10) {
+    fmt.Println(f)
+}
+
+// 带取消
+func FibonacciWithCancel(ctx context.Context) <-chan int {
+    ch := make(chan int)
+    go func() {
+        defer close(ch)
+        a, b := 0, 1
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case ch <- a:
+                a, b = b, a+b
+            }
+        }
+    }()
+    return ch
+}
+
+// ==================== 传统回调模式 ====================
+
+// 在 Go 1.23 之前的常用模式
+type IntIterator struct {
+    current int
+    end     int
+}
+
+func NewIntIterator(start, end int) *IntIterator {
+    return &IntIterator{current: start, end: end}
+}
+
+func (it *IntIterator) HasNext() bool {
+    return it.current <= it.end
+}
+
+func (it *IntIterator) Next() int {
+    v := it.current
+    it.current++
+    return v
+}
+
+// 使用
+it := NewIntIterator(1, 5)
+for it.HasNext() {
+    fmt.Println(it.Next())
+}
+```
+
+### Rust 迭代器
+
+```rust
+// ==================== Iterator trait ====================
+
+// 自定义迭代器
+struct Range {
+    current: i32,
+    end: i32,
+}
+
+impl Range {
+    fn new(start: i32, end: i32) -> Self {
+        Range { current: start, end }
+    }
+}
+
+impl Iterator for Range {
+    type Item = i32;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current <= self.end {
+            let result = self.current;
+            self.current += 1;
+            Some(result)
+        } else {
+            None
+        }
+    }
+}
+
+// 使用
+for n in Range::new(1, 5) {
+    println!("{}", n);
+}
+
+// ==================== IntoIterator trait ====================
+
+// 实现 IntoIterator 以支持 for 循环
+struct MyCollection {
+    items: Vec<i32>,
+}
+
+impl IntoIterator for MyCollection {
+    type Item = i32;
+    type IntoIter = std::vec::IntoIter<i32>;
+    
+    fn into_iter(self) -> Self::IntoIter {
+        self.items.into_iter()
+    }
+}
+
+// 三种迭代方式
+let v = vec![1, 2, 3];
+for x in v.iter() {}      // &T (借用)
+for x in v.iter_mut() {}  // &mut T (可变借用)
+for x in v.into_iter() {} // T (获取所有权)
+
+// ==================== 迭代器适配器 ====================
+
+let v = vec![1, 2, 3, 4, 5];
+
+// map - 转换
+v.iter().map(|x| x * 2);
+
+// filter - 过滤
+v.iter().filter(|x| **x % 2 == 0);
+
+// filter_map - 过滤并转换
+v.iter().filter_map(|x| if *x > 2 { Some(x * 2) } else { None });
+
+// take / skip
+v.iter().take(3);         // 前 3 个
+v.iter().skip(2);         // 跳过前 2 个
+v.iter().take_while(|x| **x < 4);
+v.iter().skip_while(|x| **x < 3);
+
+// enumerate
+for (i, x) in v.iter().enumerate() {
+    println!("{}: {}", i, x);
+}
+
+// zip
+let a = [1, 2, 3];
+let b = ["a", "b", "c"];
+for (x, y) in a.iter().zip(b.iter()) {
+    println!("{} {}", x, y);
+}
+
+// chain - 连接
+let c = a.iter().chain(b.iter());
+
+// flatten
+let nested = vec![vec![1, 2], vec![3, 4]];
+nested.into_iter().flatten();  // 1, 2, 3, 4
+
+// flat_map
+v.iter().flat_map(|x| vec![*x, x * 10]);
+
+// rev - 反转
+v.iter().rev();
+
+// cycle - 无限循环
+v.iter().cycle().take(10);
+
+// inspect - 调试
+v.iter()
+    .inspect(|x| println!("before: {}", x))
+    .map(|x| x * 2)
+    .inspect(|x| println!("after: {}", x));
+
+// peekable - 预览
+let mut iter = v.iter().peekable();
+if iter.peek() == Some(&&1) {
+    // ...
+}
+
+// ==================== 消费者 ====================
+
+let v = vec![1, 2, 3, 4, 5];
+
+// collect - 收集
+let doubled: Vec<i32> = v.iter().map(|x| x * 2).collect();
+let set: HashSet<_> = v.iter().collect();
+let s: String = ['h', 'e', 'l', 'l', 'o'].iter().collect();
+
+// sum / product
+let sum: i32 = v.iter().sum();
+let product: i32 = v.iter().product();
+
+// fold - 折叠
+let sum = v.iter().fold(0, |acc, x| acc + x);
+
+// reduce
+let sum = v.iter().copied().reduce(|a, b| a + b);
+
+// count / min / max
+v.iter().count();
+v.iter().min();
+v.iter().max();
+v.iter().min_by_key(|x| x.abs());
+
+// find / position
+v.iter().find(|x| **x > 3);       // Some(&4)
+v.iter().position(|x| *x > 3);    // Some(3)
+
+// any / all
+v.iter().any(|x| *x > 3);         // true
+v.iter().all(|x| *x > 0);         // true
+
+// for_each
+v.iter().for_each(|x| println!("{}", x));
+
+// partition
+let (evens, odds): (Vec<_>, Vec<_>) = v.iter().partition(|x| **x % 2 == 0);
+
+// ==================== 链式调用示例 ====================
+
+let result: Vec<i32> = (0..100)
+    .filter(|x| x % 2 == 0)    // 偶数
+    .map(|x| x * x)            // 平方
+    .filter(|x| x % 3 == 0)    // 能被 3 整除
+    .take(5)                    // 前 5 个
+    .collect();
+// [0, 36, 144, 324, 576]
+
+// ==================== 自定义适配器 ====================
+
+// 使用 std::iter::from_fn
+fn fibonacci() -> impl Iterator<Item = u64> {
+    let mut state = (0, 1);
+    std::iter::from_fn(move || {
+        let result = state.0;
+        state = (state.1, state.0 + state.1);
+        Some(result)
+    })
+}
+
+// 使用 std::iter::successors
+let powers_of_2 = std::iter::successors(Some(1), |&n| Some(n * 2));
+
+// 使用 std::iter::repeat_with
+let randoms = std::iter::repeat_with(|| rand::random::<u32>());
+
+// ==================== 并行迭代器 (rayon) ====================
+
+use rayon::prelude::*;
+
+let sum: i32 = (0..1000000)
+    .into_par_iter()          // 并行迭代器
+    .filter(|x| x % 2 == 0)
+    .map(|x| x * 2)
+    .sum();
+
+// 并行排序
+let mut data = vec![3, 1, 4, 1, 5];
+data.par_sort();
+
+// ==================== 异步迭代器 (Stream) ====================
+
+use futures::stream::{self, StreamExt};
+
+async fn example() {
+    let stream = stream::iter(vec![1, 2, 3]);
+    
+    // map / filter
+    let doubled = stream.map(|x| x * 2);
+    
+    // collect
+    let v: Vec<_> = stream.collect().await;
+    
+    // for_each
+    stream::iter(vec![1, 2, 3])
+        .for_each(|x| async move {
+            println!("{}", x);
+        })
+        .await;
+}
+```
+
+### 迭代器对比总结
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 迭代器协议      │ Symbol.iterator│ __iter__       │ iter.Seq (1.23)│ Iterator trait │
+│ 生成器语法      │ function*      │ yield          │ 无 (channel)   │ 无             │
+│ 惰性求值        │ ✅             │ ✅             │ ✅ (1.23+)     │ ✅             │
+│ 异步迭代        │ async function*│ async for      │ channel        │ Stream trait   │
+│ 标准库工具      │ 少             │ itertools      │ slices/maps    │ 丰富的适配器   │
+│ 并行迭代        │ 无内置         │ multiprocessing│ goroutine      │ rayon          │
+│ 零成本抽象      │ ❌             │ ❌             │ ❌             │ ✅             │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 常用操作速查
+
+```
+┌────────────────┬──────────────────┬──────────────────┬──────────────────┬──────────────────┐
+│ 操作           │ TypeScript       │ Python           │ Go (1.23+)       │ Rust             │
+├────────────────┼──────────────────┼──────────────────┼──────────────────┼──────────────────┤
+│ 创建范围       │ range(1,5)       │ range(1,6)       │ Range(1,5)       │ 1..=5            │
+│ 映射           │ map(fn)          │ map(fn, iter)    │ Map(seq, fn)     │ .map(fn)         │
+│ 过滤           │ filter(fn)       │ filter(fn, iter) │ Filter(seq, fn)  │ .filter(fn)      │
+│ 取前N个        │ take(n)          │ islice(iter,n)   │ Take(seq, n)     │ .take(n)         │
+│ 跳过N个        │ skip(n)          │ islice(iter,n,..)│ 手动             │ .skip(n)         │
+│ 折叠           │ reduce(fn)       │ reduce(fn, iter) │ 手动             │ .fold(init,fn)   │
+│ 收集           │ [...iter]        │ list(iter)       │ slices.Collect   │ .collect()       │
+│ 枚举           │ entries()        │ enumerate(iter)  │ Enumerate        │ .enumerate()     │
+│ 压缩           │ zip(a, b)        │ zip(a, b)        │ 手动             │ .zip(other)      │
+│ 连接           │ concat(a, b)     │ chain(a, b)      │ 手动             │ .chain(other)    │
+│ 扁平化         │ flat()           │ chain.from_iter  │ 手动             │ .flatten()       │
+│ 任一满足       │ some(fn)         │ any(fn, iter)    │ 手动             │ .any(fn)         │
+│ 全部满足       │ every(fn)        │ all(fn, iter)    │ 手动             │ .all(fn)         │
+└────────────────┴──────────────────┴──────────────────┴──────────────────┴──────────────────┘
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
