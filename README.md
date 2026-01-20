@@ -832,6 +832,921 @@ fn old_function() {}
 
 ---
 
+## 📅 日期操作对比
+
+### 日期类型概览
+
+| 语言 | 主要类型 | 时区支持 | 精度 |
+|------|----------|----------|------|
+| TypeScript | `Date` | 有限 | 毫秒 |
+| Python | `datetime` | 完善 (pytz/zoneinfo) | 微秒 |
+| Go | `time.Time` | 内置完善 | 纳秒 |
+| Rust | `chrono` crate | 完善 | 纳秒 |
+
+### 创建日期
+
+**TypeScript**
+```typescript
+// 当前时间
+const now = new Date();
+
+// 指定日期
+const date1 = new Date('2024-03-15');
+const date2 = new Date(2024, 2, 15);  // 月份从 0 开始！
+const date3 = new Date(2024, 2, 15, 10, 30, 0);
+
+// 时间戳
+const fromTimestamp = new Date(1710489600000);
+
+// ISO 字符串
+const iso = new Date('2024-03-15T10:30:00Z');
+```
+
+**Python**
+```python
+from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo  # Python 3.9+
+
+# 当前时间
+now = datetime.now()
+utc_now = datetime.utcnow()  # 已弃用
+utc_now = datetime.now(ZoneInfo('UTC'))  # 推荐
+
+# 指定日期
+date1 = datetime(2024, 3, 15)
+date2 = datetime(2024, 3, 15, 10, 30, 0)
+date_only = date(2024, 3, 15)
+
+# 时间戳
+from_timestamp = datetime.fromtimestamp(1710489600)
+
+# 字符串解析
+parsed = datetime.strptime('2024-03-15', '%Y-%m-%d')
+iso_parsed = datetime.fromisoformat('2024-03-15T10:30:00')
+```
+
+**Go**
+```go
+import "time"
+
+// 当前时间
+now := time.Now()
+utcNow := time.Now().UTC()
+
+// 指定日期 (年, 月, 日, 时, 分, 秒, 纳秒, 时区)
+date1 := time.Date(2024, time.March, 15, 0, 0, 0, 0, time.UTC)
+date2 := time.Date(2024, 3, 15, 10, 30, 0, 0, time.Local)
+
+// 时间戳
+fromUnix := time.Unix(1710489600, 0)
+fromUnixMilli := time.UnixMilli(1710489600000)
+
+// 字符串解析 (Go 使用参考时间: 2006-01-02 15:04:05)
+parsed, _ := time.Parse("2006-01-02", "2024-03-15")
+parsed2, _ := time.Parse(time.RFC3339, "2024-03-15T10:30:00Z")
+```
+
+**Rust**
+```rust
+use chrono::{DateTime, Utc, Local, NaiveDate, NaiveDateTime, TimeZone};
+
+// 当前时间
+let now: DateTime<Utc> = Utc::now();
+let local_now: DateTime<Local> = Local::now();
+
+// 指定日期
+let date1 = NaiveDate::from_ymd_opt(2024, 3, 15).unwrap();
+let datetime1 = NaiveDateTime::new(
+    NaiveDate::from_ymd_opt(2024, 3, 15).unwrap(),
+    chrono::NaiveTime::from_hms_opt(10, 30, 0).unwrap()
+);
+
+// 带时区
+let utc_date = Utc.with_ymd_and_hms(2024, 3, 15, 10, 30, 0).unwrap();
+
+// 时间戳
+let from_timestamp = DateTime::from_timestamp(1710489600, 0).unwrap();
+
+// 字符串解析
+let parsed = NaiveDate::parse_from_str("2024-03-15", "%Y-%m-%d").unwrap();
+let parsed_dt = DateTime::parse_from_rfc3339("2024-03-15T10:30:00Z").unwrap();
+```
+
+### 日期格式化
+
+**TypeScript**
+```typescript
+const date = new Date('2024-03-15T10:30:00');
+
+// 内置方法
+date.toISOString();       // "2024-03-15T10:30:00.000Z"
+date.toLocaleDateString(); // "3/15/2024" (依赖 locale)
+date.toLocaleString('zh-CN'); // "2024/3/15 10:30:00"
+
+// Intl API (推荐)
+const formatter = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit'
+});
+formatter.format(date);  // "2024/03/15 10:30"
+
+// 手动格式化
+const pad = (n: number) => n.toString().padStart(2, '0');
+`${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+```
+
+**Python**
+```python
+from datetime import datetime
+
+dt = datetime(2024, 3, 15, 10, 30, 0)
+
+# strftime 格式化
+dt.strftime('%Y-%m-%d')           # "2024-03-15"
+dt.strftime('%Y年%m月%d日')        # "2024年03月15日"
+dt.strftime('%Y-%m-%d %H:%M:%S')  # "2024-03-15 10:30:00"
+dt.strftime('%A, %B %d, %Y')      # "Friday, March 15, 2024"
+
+# ISO 格式
+dt.isoformat()                    # "2024-03-15T10:30:00"
+
+# f-string
+f"{dt:%Y/%m/%d}"                  # "2024/03/15"
+```
+
+**Go**
+```go
+t := time.Date(2024, 3, 15, 10, 30, 0, 0, time.UTC)
+
+// Go 使用参考时间格式: Mon Jan 2 15:04:05 MST 2006
+t.Format("2006-01-02")           // "2024-03-15"
+t.Format("2006年01月02日")        // "2024年03月15日"
+t.Format("2006-01-02 15:04:05")  // "2024-03-15 10:30:00"
+t.Format(time.RFC3339)           // "2024-03-15T10:30:00Z"
+t.Format("Monday, January 2, 2006") // "Friday, March 15, 2024"
+
+// 预定义格式
+t.Format(time.Kitchen)           // "10:30AM"
+t.Format(time.RFC822)            // "15 Mar 24 10:30 UTC"
+```
+
+**Rust**
+```rust
+use chrono::{Utc, TimeZone};
+
+let dt = Utc.with_ymd_and_hms(2024, 3, 15, 10, 30, 0).unwrap();
+
+// format! 宏
+dt.format("%Y-%m-%d").to_string()           // "2024-03-15"
+dt.format("%Y年%m月%d日").to_string()        // "2024年03月15日"
+dt.format("%Y-%m-%d %H:%M:%S").to_string()  // "2024-03-15 10:30:00"
+dt.format("%A, %B %d, %Y").to_string()      // "Friday, March 15, 2024"
+
+// RFC 格式
+dt.to_rfc3339()                             // "2024-03-15T10:30:00+00:00"
+dt.to_rfc2822()                             // "Fri, 15 Mar 2024 10:30:00 +0000"
+```
+
+### 日期差计算
+
+**TypeScript**
+```typescript
+const date1 = new Date('2024-03-15');
+const date2 = new Date('2024-03-20');
+
+// 毫秒差
+const diffMs = date2.getTime() - date1.getTime();
+
+// 转换为各单位
+const diffSeconds = diffMs / 1000;
+const diffMinutes = diffMs / (1000 * 60);
+const diffHours = diffMs / (1000 * 60 * 60);
+const diffDays = diffMs / (1000 * 60 * 60 * 24);  // 5
+
+// 添加天数
+const addDays = (date: Date, days: number): Date => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+
+// 添加月份（注意月末边界）
+const addMonths = (date: Date, months: number): Date => {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+};
+```
+
+**Python**
+```python
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta  # pip install python-dateutil
+
+date1 = datetime(2024, 3, 15)
+date2 = datetime(2024, 3, 20)
+
+# timedelta 差值
+diff = date2 - date1
+diff.days          # 5
+diff.total_seconds()  # 432000.0
+
+# 添加时间
+date1 + timedelta(days=5)        # 2024-03-20
+date1 + timedelta(hours=48)      # 2024-03-17
+date1 + timedelta(weeks=2)       # 2024-03-29
+
+# relativedelta (处理月/年更准确)
+date1 + relativedelta(months=1)  # 2024-04-15
+date1 + relativedelta(years=1)   # 2025-03-15
+date1 + relativedelta(months=1, days=5)  # 2024-04-20
+
+# 计算精确差值
+rd = relativedelta(date2, date1)
+rd.days  # 5
+```
+
+**Go**
+```go
+date1 := time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)
+date2 := time.Date(2024, 3, 20, 0, 0, 0, 0, time.UTC)
+
+// Duration 差值
+diff := date2.Sub(date1)
+diff.Hours()    // 120
+diff.Minutes()  // 7200
+diff.Seconds()  // 432000
+
+// 天数
+days := int(diff.Hours() / 24)  // 5
+
+// 添加时间
+date1.Add(5 * 24 * time.Hour)      // 添加 5 天
+date1.Add(time.Hour * 48)          // 添加 48 小时
+date1.AddDate(1, 2, 3)             // 添加 1年2月3天
+
+// 使用 AddDate
+date1.AddDate(0, 1, 0)  // 添加 1 个月 -> 2024-04-15
+date1.AddDate(1, 0, 0)  // 添加 1 年 -> 2025-03-15
+```
+
+**Rust**
+```rust
+use chrono::{Duration, Utc, TimeZone, Datelike};
+
+let date1 = Utc.with_ymd_and_hms(2024, 3, 15, 0, 0, 0).unwrap();
+let date2 = Utc.with_ymd_and_hms(2024, 3, 20, 0, 0, 0).unwrap();
+
+// Duration 差值
+let diff = date2.signed_duration_since(date1);
+diff.num_days()      // 5
+diff.num_hours()     // 120
+diff.num_seconds()   // 432000
+
+// 添加时间
+date1 + Duration::days(5)       // 添加 5 天
+date1 + Duration::hours(48)     // 添加 48 小时
+date1 + Duration::weeks(2)      // 添加 2 周
+
+// 添加月份 (chrono 需要手动处理)
+use chrono::Months;
+date1.checked_add_months(Months::new(1)).unwrap()  // 2024-04-15
+
+// 年份操作
+date1.with_year(2025).unwrap()  // 2025-03-15
+```
+
+### 日期比较
+
+**TypeScript**
+```typescript
+const date1 = new Date('2024-03-15');
+const date2 = new Date('2024-03-20');
+const date3 = new Date('2024-03-15');
+
+// 比较时间戳
+date1.getTime() < date2.getTime()   // true
+date1.getTime() === date3.getTime() // true
+
+// 直接比较 (仅 < > 可用)
+date1 < date2   // true
+date1 > date2   // false
+// date1 === date3  // false! (对象引用比较)
+
+// 判断是否同一天
+const isSameDay = (d1: Date, d2: Date): boolean =>
+  d1.getFullYear() === d2.getFullYear() &&
+  d1.getMonth() === d2.getMonth() &&
+  d1.getDate() === d2.getDate();
+
+// 范围判断
+const isInRange = (date: Date, start: Date, end: Date): boolean =>
+  date >= start && date <= end;
+```
+
+**Python**
+```python
+from datetime import datetime
+
+date1 = datetime(2024, 3, 15)
+date2 = datetime(2024, 3, 20)
+date3 = datetime(2024, 3, 15)
+
+# 直接比较
+date1 < date2   # True
+date1 > date2   # False
+date1 == date3  # True
+date1 != date2  # True
+date1 <= date2  # True
+
+# 范围判断
+start = datetime(2024, 3, 1)
+end = datetime(2024, 3, 31)
+start <= date1 <= end  # True (Python 支持链式比较)
+
+# 判断是否同一天
+date1.date() == date3.date()  # True
+
+# 最早/最晚
+min(date1, date2, date3)  # date1
+max(date1, date2, date3)  # date2
+
+# 排序
+dates = [date2, date1, date3]
+sorted(dates)  # [date1, date3, date2]
+```
+
+**Go**
+```go
+date1 := time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)
+date2 := time.Date(2024, 3, 20, 0, 0, 0, 0, time.UTC)
+date3 := time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)
+
+// 比较方法
+date1.Before(date2)  // true
+date1.After(date2)   // false
+date1.Equal(date3)   // true
+
+// 范围判断
+start := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+end := time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC)
+inRange := (date1.After(start) || date1.Equal(start)) && 
+           (date1.Before(end) || date1.Equal(end))
+
+// 判断是否为零值
+date1.IsZero()  // false
+
+// 同一天判断
+func isSameDay(t1, t2 time.Time) bool {
+    y1, m1, d1 := t1.Date()
+    y2, m2, d2 := t2.Date()
+    return y1 == y2 && m1 == m2 && d1 == d2
+}
+```
+
+**Rust**
+```rust
+use chrono::{Utc, TimeZone};
+
+let date1 = Utc.with_ymd_and_hms(2024, 3, 15, 0, 0, 0).unwrap();
+let date2 = Utc.with_ymd_and_hms(2024, 3, 20, 0, 0, 0).unwrap();
+let date3 = Utc.with_ymd_and_hms(2024, 3, 15, 0, 0, 0).unwrap();
+
+// 直接比较 (实现了 Ord trait)
+date1 < date2   // true
+date1 > date2   // false
+date1 == date3  // true
+date1 != date2  // true
+
+// 范围判断
+let start = Utc.with_ymd_and_hms(2024, 3, 1, 0, 0, 0).unwrap();
+let end = Utc.with_ymd_and_hms(2024, 3, 31, 0, 0, 0).unwrap();
+let in_range = date1 >= start && date1 <= end;  // true
+
+// 最早/最晚
+let earliest = date1.min(date2);
+let latest = date1.max(date2);
+
+// 排序
+let mut dates = vec![date2, date1, date3];
+dates.sort();  // [date1, date3, date2]
+
+// 同一天判断
+date1.date_naive() == date3.date_naive()  // true
+```
+
+### 日期格式化速查表
+
+```
+┌──────────┬─────────────┬─────────────┬─────────────┬─────────────┐
+│ 含义     │ TypeScript  │ Python      │ Go          │ Rust        │
+├──────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+│ 四位年份  │ getFullYear │ %Y          │ 2006        │ %Y          │
+│ 两位年份  │ -           │ %y          │ 06          │ %y          │
+│ 月(01-12)│ getMonth+1  │ %m          │ 01          │ %m          │
+│ 日(01-31)│ getDate     │ %d          │ 02          │ %d          │
+│ 时(00-23)│ getHours    │ %H          │ 15          │ %H          │
+│ 分(00-59)│ getMinutes  │ %M          │ 04          │ %M          │
+│ 秒(00-59)│ getSeconds  │ %S          │ 05          │ %S          │
+│ 星期名称  │ -           │ %A          │ Monday      │ %A          │
+│ 月份名称  │ -           │ %B          │ January     │ %B          │
+└──────────┴─────────────┴─────────────┴─────────────┴─────────────┘
+```
+
+---
+
+## 🔤 字符串操作对比
+
+### 字符串类型概览
+
+| 语言 | 类型 | 可变性 | 编码 | 索引单位 |
+|------|------|--------|------|----------|
+| TypeScript | `string` | 不可变 | UTF-16 | 代码单元 |
+| Python | `str` | 不可变 | UTF-8 | Unicode 码点 |
+| Go | `string` | 不可变 | UTF-8 | 字节 |
+| Rust | `String` / `&str` | String 可变 | UTF-8 | 字节 |
+
+### 基本操作
+
+**TypeScript**
+```typescript
+const s = "Hello, World!";
+
+// 长度
+s.length;           // 13 (UTF-16 代码单元数)
+
+// 访问字符
+s[0];               // "H"
+s.charAt(0);        // "H"
+s.at(-1);           // "!" (ES2022)
+
+// 切片
+s.slice(0, 5);      // "Hello"
+s.slice(-6);        // "World!"
+s.substring(0, 5);  // "Hello"
+
+// 查找
+s.indexOf("o");     // 4
+s.lastIndexOf("o"); // 8
+s.includes("World"); // true
+s.startsWith("Hello"); // true
+s.endsWith("!");    // true
+
+// 拼接
+"Hello" + " " + "World";
+`Hello ${name}`;    // 模板字符串
+["Hello", "World"].join(" ");
+```
+
+**Python**
+```python
+s = "Hello, World!"
+
+# 长度
+len(s)              # 13
+
+# 访问字符
+s[0]                # "H"
+s[-1]               # "!"
+
+# 切片
+s[0:5]              # "Hello"
+s[-6:]              # "World!"
+s[::2]              # "Hlo ol!" (步长为2)
+s[::-1]             # "!dlroW ,olleH" (反转)
+
+# 查找
+s.index("o")        # 4 (找不到抛异常)
+s.find("o")         # 4 (找不到返回 -1)
+s.rfind("o")        # 8
+"World" in s        # True
+s.startswith("Hello")  # True
+s.endswith("!")     # True
+s.count("o")        # 2
+
+# 拼接
+"Hello" + " " + "World"
+f"Hello {name}"     # f-string
+" ".join(["Hello", "World"])
+```
+
+**Go**
+```go
+s := "Hello, World!"
+
+// 长度
+len(s)              // 13 (字节数)
+utf8.RuneCountInString(s)  // 13 (字符数)
+
+// 访问 (返回字节)
+s[0]                // 72 (byte 'H')
+string(s[0])        // "H"
+
+// 切片
+s[0:5]              // "Hello"
+s[7:]               // "World!"
+
+// 查找
+strings.Index(s, "o")      // 4
+strings.LastIndex(s, "o")  // 8
+strings.Contains(s, "World") // true
+strings.HasPrefix(s, "Hello") // true
+strings.HasSuffix(s, "!")  // true
+strings.Count(s, "o")      // 2
+
+// 拼接
+"Hello" + " " + "World"
+fmt.Sprintf("Hello %s", name)
+strings.Join([]string{"Hello", "World"}, " ")
+
+// 构建器 (高效拼接)
+var builder strings.Builder
+builder.WriteString("Hello")
+builder.WriteString(" World")
+builder.String()
+```
+
+**Rust**
+```rust
+let s = String::from("Hello, World!");
+let s_slice: &str = "Hello, World!";
+
+// 长度
+s.len()             // 13 (字节数)
+s.chars().count()   // 13 (字符数)
+
+// 访问字符 (返回迭代器)
+s.chars().nth(0)    // Some('H')
+s.chars().last()    // Some('!')
+
+// 切片 (必须是有效 UTF-8 边界)
+&s[0..5]            // "Hello"
+&s[7..]             // "World!"
+
+// 查找
+s.find("o")         // Some(4)
+s.rfind("o")        // Some(8)
+s.contains("World") // true
+s.starts_with("Hello") // true
+s.ends_with("!")    // true
+s.matches("o").count() // 2
+
+// 拼接
+format!("{} {}", "Hello", "World")
+let mut owned = String::from("Hello");
+owned.push_str(" World");
+["Hello", "World"].join(" ")
+```
+
+### 字符串转换
+
+**TypeScript**
+```typescript
+const s = "  Hello, World!  ";
+
+// 大小写
+s.toUpperCase();    // "  HELLO, WORLD!  "
+s.toLowerCase();    // "  hello, world!  "
+
+// 去空白
+s.trim();           // "Hello, World!"
+s.trimStart();      // "Hello, World!  "
+s.trimEnd();        // "  Hello, World!"
+
+// 替换
+s.replace("World", "TypeScript");      // 替换第一个
+s.replaceAll("l", "L");                // 替换所有
+s.replace(/o/g, "0");                  // 正则替换
+
+// 分割
+"a,b,c".split(",");         // ["a", "b", "c"]
+"a  b  c".split(/\s+/);     // ["a", "b", "c"]
+
+// 填充
+"5".padStart(3, "0");       // "005"
+"5".padEnd(3, "0");         // "500"
+
+// 重复
+"ab".repeat(3);             // "ababab"
+```
+
+**Python**
+```python
+s = "  Hello, World!  "
+
+# 大小写
+s.upper()           # "  HELLO, WORLD!  "
+s.lower()           # "  hello, world!  "
+s.capitalize()      # "  hello, world!  "
+s.title()           # "  Hello, World!  "
+s.swapcase()        # "  hELLO, wORLD!  "
+
+# 去空白
+s.strip()           # "Hello, World!"
+s.lstrip()          # "Hello, World!  "
+s.rstrip()          # "  Hello, World!"
+s.strip(" !")       # "Hello, World"
+
+# 替换
+s.replace("World", "Python")           # 替换所有
+s.replace("l", "L", 1)                 # 只替换第一个
+
+# 分割
+"a,b,c".split(",")          # ["a", "b", "c"]
+"a  b  c".split()           # ["a", "b", "c"] (默认按空白)
+"a,b,c".split(",", 1)       # ["a", "b,c"] (限制分割次数)
+"a\nb\nc".splitlines()      # ["a", "b", "c"]
+
+# 填充
+"5".zfill(3)                # "005"
+"5".rjust(3, "0")           # "005"
+"5".ljust(3, "0")           # "500"
+"5".center(5, "-")          # "--5--"
+
+# 重复
+"ab" * 3                    # "ababab"
+```
+
+**Go**
+```go
+import "strings"
+
+s := "  Hello, World!  "
+
+// 大小写
+strings.ToUpper(s)          // "  HELLO, WORLD!  "
+strings.ToLower(s)          // "  hello, world!  "
+strings.Title(s)            // "  Hello, World!  " (已弃用)
+cases.Title(language.English).String(s)  // golang.org/x/text
+
+// 去空白
+strings.TrimSpace(s)        // "Hello, World!"
+strings.TrimLeft(s, " ")    // "Hello, World!  "
+strings.TrimRight(s, " ")   // "  Hello, World!"
+strings.Trim(s, " !")       // "Hello, World"
+strings.TrimPrefix(s, "  ") // "Hello, World!  "
+strings.TrimSuffix(s, "  ") // "  Hello, World!"
+
+// 替换
+strings.Replace(s, "World", "Go", 1)   // 替换第一个
+strings.ReplaceAll(s, "l", "L")        // 替换所有
+
+// 分割
+strings.Split("a,b,c", ",")           // ["a", "b", "c"]
+strings.Fields("a  b  c")             // ["a", "b", "c"]
+strings.SplitN("a,b,c", ",", 2)       // ["a", "b,c"]
+
+// 填充 (需手动实现)
+fmt.Sprintf("%03s", "5")              // "  5" (不完全等价)
+fmt.Sprintf("%03d", 5)                // "005"
+
+// 重复
+strings.Repeat("ab", 3)               // "ababab"
+```
+
+**Rust**
+```rust
+let s = "  Hello, World!  ";
+
+// 大小写
+s.to_uppercase()            // "  HELLO, WORLD!  "
+s.to_lowercase()            // "  hello, world!  "
+
+// 去空白
+s.trim()                    // "Hello, World!"
+s.trim_start()              // "Hello, World!  "
+s.trim_end()                // "  Hello, World!"
+s.trim_matches(|c| c == ' ' || c == '!')  // "Hello, World"
+s.strip_prefix("  ")        // Some("Hello, World!  ")
+s.strip_suffix("  ")        // Some("  Hello, World!")
+
+// 替换
+s.replace("World", "Rust")             // 替换所有
+s.replacen("l", "L", 1)                // 只替换第一个
+
+// 分割
+"a,b,c".split(',').collect::<Vec<_>>()  // ["a", "b", "c"]
+"a  b  c".split_whitespace().collect::<Vec<_>>()  // ["a", "b", "c"]
+"a,b,c".splitn(2, ',').collect::<Vec<_>>()  // ["a", "b,c"]
+
+// 填充
+format!("{:0>3}", "5")      // "005"
+format!("{:0<3}", "5")      // "500"
+format!("{:-^5}", "5")      // "--5--"
+
+// 重复
+"ab".repeat(3)              // "ababab"
+```
+
+### 字符串解析
+
+**TypeScript**
+```typescript
+// 数字解析
+parseInt("42");           // 42
+parseInt("42.5");         // 42
+parseInt("1010", 2);      // 10 (二进制)
+parseInt("ff", 16);       // 255 (十六进制)
+parseFloat("3.14");       // 3.14
+Number("42");             // 42
++"42";                    // 42 (一元加号)
+
+// JSON 解析
+JSON.parse('{"name":"John","age":30}');
+JSON.stringify({ name: "John", age: 30 });
+
+// URL 解析
+const url = new URL("https://example.com/path?name=john");
+url.hostname;             // "example.com"
+url.pathname;             // "/path"
+url.searchParams.get("name");  // "john"
+
+// 正则提取
+const match = "age: 25".match(/age: (\d+)/);
+match?.[1];               // "25"
+
+// 模板解析
+const template = "Hello, {name}!";
+template.replace("{name}", "World");
+```
+
+**Python**
+```python
+# 数字解析
+int("42")                 # 42
+int("1010", 2)            # 10 (二进制)
+int("ff", 16)             # 255 (十六进制)
+float("3.14")             # 3.14
+
+# JSON 解析
+import json
+json.loads('{"name":"John","age":30}')
+json.dumps({"name": "John", "age": 30})
+
+# URL 解析
+from urllib.parse import urlparse, parse_qs
+url = urlparse("https://example.com/path?name=john")
+url.hostname              # "example.com"
+url.path                  # "/path"
+parse_qs(url.query)       # {"name": ["john"]}
+
+# 正则提取
+import re
+match = re.search(r'age: (\d+)', "age: 25")
+match.group(1)            # "25"
+re.findall(r'\d+', "a1b2c3")  # ["1", "2", "3"]
+
+# 格式化字符串解析
+from string import Template
+t = Template("Hello, $name!")
+t.substitute(name="World")
+
+# 结构化解析
+name, age = "John,30".split(",")
+```
+
+**Go**
+```go
+import (
+    "encoding/json"
+    "fmt"
+    "net/url"
+    "regexp"
+    "strconv"
+)
+
+// 数字解析
+strconv.Atoi("42")                    // 42, nil
+strconv.ParseInt("1010", 2, 64)       // 10 (二进制)
+strconv.ParseInt("ff", 16, 64)        // 255 (十六进制)
+strconv.ParseFloat("3.14", 64)        // 3.14
+
+// JSON 解析
+type Person struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+var p Person
+json.Unmarshal([]byte(`{"name":"John","age":30}`), &p)
+data, _ := json.Marshal(p)
+
+// URL 解析
+u, _ := url.Parse("https://example.com/path?name=john")
+u.Hostname()              // "example.com"
+u.Path                    // "/path"
+u.Query().Get("name")     // "john"
+
+// 正则提取
+re := regexp.MustCompile(`age: (\d+)`)
+match := re.FindStringSubmatch("age: 25")
+match[1]                  // "25"
+re.FindAllString("a1b2c3", -1)  // 配合模式
+
+// 格式化解析
+fmt.Sscanf("John 30", "%s %d", &name, &age)
+```
+
+**Rust**
+```rust
+use std::str::FromStr;
+
+// 数字解析
+"42".parse::<i32>().unwrap()              // 42
+i32::from_str_radix("1010", 2).unwrap()   // 10 (二进制)
+i32::from_str_radix("ff", 16).unwrap()    // 255 (十六进制)
+"3.14".parse::<f64>().unwrap()            // 3.14
+
+// JSON 解析 (serde_json)
+use serde::{Deserialize, Serialize};
+use serde_json;
+
+#[derive(Serialize, Deserialize)]
+struct Person {
+    name: String,
+    age: u32,
+}
+let p: Person = serde_json::from_str(r#"{"name":"John","age":30}"#).unwrap();
+let json = serde_json::to_string(&p).unwrap();
+
+// URL 解析 (url crate)
+use url::Url;
+let u = Url::parse("https://example.com/path?name=john").unwrap();
+u.host_str()              // Some("example.com")
+u.path()                  // "/path"
+u.query_pairs().find(|(k, _)| k == "name")  // ("name", "john")
+
+// 正则提取 (regex crate)
+use regex::Regex;
+let re = Regex::new(r"age: (\d+)").unwrap();
+let caps = re.captures("age: 25").unwrap();
+&caps[1]                  // "25"
+re.find_iter("a1b2c3").map(|m| m.as_str()).collect::<Vec<_>>()
+
+// 模式匹配解析
+let parts: Vec<&str> = "John,30".split(',').collect();
+let (name, age) = (parts[0], parts[1].parse::<i32>().unwrap());
+```
+
+### 字符串方法速查表
+
+```
+┌────────────────┬───────────────────┬─────────────────┬─────────────────┬─────────────────┐
+│ 操作           │ TypeScript        │ Python          │ Go              │ Rust            │
+├────────────────┼───────────────────┼─────────────────┼─────────────────┼─────────────────┤
+│ 长度           │ .length           │ len()           │ len()           │ .len()          │
+│ 大写           │ .toUpperCase()    │ .upper()        │ strings.ToUpper │ .to_uppercase() │
+│ 小写           │ .toLowerCase()    │ .lower()        │ strings.ToLower │ .to_lowercase() │
+│ 去空白         │ .trim()           │ .strip()        │ strings.TrimSpace│ .trim()        │
+│ 分割           │ .split()          │ .split()        │ strings.Split   │ .split()        │
+│ 连接           │ .join()           │ .join()         │ strings.Join    │ .join()         │
+│ 替换           │ .replace()        │ .replace()      │ strings.Replace │ .replace()      │
+│ 包含           │ .includes()       │ in              │ strings.Contains│ .contains()     │
+│ 开始于         │ .startsWith()     │ .startswith()   │ strings.HasPrefix│.starts_with()  │
+│ 结束于         │ .endsWith()       │ .endswith()     │ strings.HasSuffix│.ends_with()    │
+│ 查找           │ .indexOf()        │ .find()         │ strings.Index   │ .find()         │
+│ 重复           │ .repeat()         │ * 运算符        │ strings.Repeat  │ .repeat()       │
+│ 填充           │ .padStart()       │ .zfill()/.rjust │ fmt.Sprintf     │ format!         │
+└────────────────┴───────────────────┴─────────────────┴─────────────────┴─────────────────┘
+```
+
+### Unicode 处理注意事项
+
+```typescript
+// TypeScript: UTF-16 代码单元
+"😀".length;              // 2 (代理对)
+[..."😀"].length;         // 1 (展开为码点)
+"café".normalize("NFD");  // 规范化
+```
+
+```python
+# Python: Unicode 码点
+len("😀")                 # 1
+"😀".encode('utf-8')      # b'\xf0\x9f\x98\x80' (4字节)
+import unicodedata
+unicodedata.normalize('NFD', 'café')
+```
+
+```go
+// Go: UTF-8 字节
+len("😀")                           // 4 (字节)
+utf8.RuneCountInString("😀")        // 1 (符文)
+[]rune("😀")                        // [128512]
+for _, r := range "Hello😀" { }     // 遍历符文
+```
+
+```rust
+// Rust: UTF-8 字节
+"😀".len()                // 4 (字节)
+"😀".chars().count()      // 1 (字符)
+"😀".as_bytes()           // [240, 159, 152, 128]
+for c in "Hello😀".chars() { }  // 遍历字符
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
