@@ -7915,6 +7915,522 @@ MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
 
 ---
 
+## 🧠 内存管理
+
+### 内存管理模型概览
+
+| 语言 | 管理方式 | GC 类型 | 特点 |
+|------|----------|---------|------|
+| TypeScript | 自动 GC | 标记-清除 (V8) | 完全自动，开发者无感 |
+| Python | 自动 GC | 引用计数 + 分代 GC | 引用计数为主 |
+| Go | 自动 GC | 三色标记并发 GC | 低延迟，可调优 |
+| Rust | 所有权系统 | 无 GC | 编译时内存安全 |
+
+### TypeScript/JavaScript 内存管理
+
+```typescript
+// ==================== 内存分配 ====================
+// 自动分配，无需手动管理
+const obj = { name: "John" };     // 堆分配
+const arr = [1, 2, 3];            // 堆分配
+const str = "hello";              // 字符串池/堆
+
+// ==================== 垃圾回收 (V8) ====================
+/*
+V8 使用分代 GC:
+- 新生代 (Young Generation): 小对象，频繁 GC
+- 老生代 (Old Generation): 存活久的对象，较少 GC
+
+GC 算法:
+- Scavenge: 新生代，复制算法
+- Mark-Sweep: 老生代，标记-清除
+- Mark-Compact: 老生代，标记-整理
+*/
+
+// ==================== 内存泄漏常见原因 ====================
+
+// 1. 全局变量
+function leak() {
+  globalVar = "leaked";  // 忘记 let/const，变成全局变量
+}
+
+// 2. 闭包引用
+function createClosure() {
+  const largeData = new Array(1000000);
+  return function() {
+    console.log(largeData.length);  // largeData 无法被回收
+  };
+}
+
+// 3. 事件监听器未移除
+element.addEventListener('click', handler);
+// 忘记: element.removeEventListener('click', handler);
+
+// 4. 定时器未清除
+const timer = setInterval(() => {}, 1000);
+// 忘记: clearInterval(timer);
+
+// 5. DOM 引用
+const elements = {
+  button: document.getElementById('button')
+};
+document.body.removeChild(elements.button);
+// elements.button 仍持有引用
+
+// ==================== 最佳实践 ====================
+
+// WeakMap/WeakSet (弱引用，不阻止 GC)
+const cache = new WeakMap();
+cache.set(obj, computedValue);
+// obj 被回收时，缓存自动清理
+
+// 手动解除引用
+let data = fetchLargeData();
+processData(data);
+data = null;  // 帮助 GC
+
+// 使用对象池
+class ObjectPool<T> {
+  private pool: T[] = [];
+  
+  acquire(factory: () => T): T {
+    return this.pool.pop() ?? factory();
+  }
+  
+  release(obj: T): void {
+    this.pool.push(obj);
+  }
+}
+
+// ==================== 内存分析 ====================
+// Chrome DevTools -> Memory
+// - Heap Snapshot: 堆快照
+// - Allocation Timeline: 分配时间线
+// - Allocation Sampling: 分配采样
+
+// Node.js
+// node --inspect app.js
+// process.memoryUsage()
+```
+
+### Python 内存管理
+
+```python
+import sys
+import gc
+
+# ==================== 引用计数 ====================
+a = [1, 2, 3]
+sys.getrefcount(a)  # 引用计数 (会多 1，因为参数传递)
+
+b = a               # 引用计数 +1
+del b               # 引用计数 -1
+a = None            # 引用计数 -1，可能被回收
+
+# ==================== 循环引用 ====================
+class Node:
+    def __init__(self):
+        self.ref = None
+
+a = Node()
+b = Node()
+a.ref = b
+b.ref = a  # 循环引用！引用计数永不为 0
+
+# 分代 GC 处理循环引用
+gc.collect()  # 手动触发 GC
+
+# ==================== 垃圾回收控制 ====================
+gc.disable()           # 禁用 GC
+gc.enable()            # 启用 GC
+gc.collect()           # 手动 GC
+gc.get_count()         # 各代计数
+gc.get_threshold()     # GC 阈值
+
+# 设置阈值 (generation 0, 1, 2)
+gc.set_threshold(700, 10, 10)
+
+# 获取无法回收的对象
+gc.garbage
+
+# ==================== 弱引用 ====================
+import weakref
+
+class Data:
+    pass
+
+data = Data()
+weak_ref = weakref.ref(data)
+
+weak_ref()  # 返回对象或 None
+del data
+weak_ref()  # None
+
+# WeakValueDictionary
+cache = weakref.WeakValueDictionary()
+cache['key'] = Data()  # 对象可被 GC
+
+# ==================== 内存优化 ====================
+
+# __slots__ 减少内存
+class Point:
+    __slots__ = ['x', 'y']  # 不使用 __dict__
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+# 生成器代替列表
+def numbers():
+    for i in range(1000000):
+        yield i
+# 而不是: [i for i in range(1000000)]
+
+# array 代替 list (数值)
+from array import array
+arr = array('i', [1, 2, 3])  # 更紧凑
+
+# ==================== 内存分析 ====================
+import tracemalloc
+
+tracemalloc.start()
+# ... 代码 ...
+snapshot = tracemalloc.take_snapshot()
+top_stats = snapshot.statistics('lineno')
+
+for stat in top_stats[:10]:
+    print(stat)
+
+# 内存使用
+import resource
+resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+# 对象大小
+sys.getsizeof(obj)
+
+# memory_profiler
+# pip install memory-profiler
+# @profile
+# def my_func():
+#     ...
+# python -m memory_profiler script.py
+```
+
+### Go 内存管理
+
+```go
+import (
+    "runtime"
+    "runtime/debug"
+)
+
+// ==================== 内存分配 ====================
+
+// 栈分配 (小对象，编译器自动决定)
+func stackAlloc() {
+    x := 42           // 栈
+    arr := [10]int{}  // 小数组，栈
+}
+
+// 堆分配 (逃逸分析决定)
+func heapAlloc() *int {
+    x := 42
+    return &x  // x 逃逸到堆
+}
+
+// new 和 make
+ptr := new(int)           // 分配并返回指针
+slice := make([]int, 10)  // 分配切片
+m := make(map[string]int) // 分配 map
+ch := make(chan int, 10)  // 分配 channel
+
+// ==================== 垃圾回收 ====================
+/*
+Go GC 特点:
+- 三色标记并发 GC
+- 写屏障 (Write Barrier)
+- 目标: 低延迟 (< 1ms STW)
+*/
+
+// 手动触发 GC
+runtime.GC()
+
+// GC 统计
+var stats runtime.MemStats
+runtime.ReadMemStats(&stats)
+stats.Alloc      // 当前堆分配
+stats.TotalAlloc // 累计分配
+stats.Sys        // 系统内存
+stats.NumGC      // GC 次数
+
+// ==================== GC 调优 ====================
+
+// GOGC 环境变量 (默认 100)
+// GOGC=200  内存翻倍时触发 GC
+// GOGC=50   内存增加 50% 触发 GC
+// GOGC=off  禁用 GC
+
+// 程序中设置
+debug.SetGCPercent(200)
+
+// 内存限制 (Go 1.19+)
+debug.SetMemoryLimit(1 << 30)  // 1GB
+
+// ==================== 内存池 ====================
+import "sync"
+
+var bufferPool = sync.Pool{
+    New: func() interface{} {
+        return make([]byte, 1024)
+    },
+}
+
+func process() {
+    buf := bufferPool.Get().([]byte)
+    defer bufferPool.Put(buf)
+    // 使用 buf
+}
+
+// ==================== 逃逸分析 ====================
+// go build -gcflags="-m" main.go
+
+// 不逃逸
+func noEscape() int {
+    x := 42
+    return x
+}
+
+// 逃逸到堆
+func escape() *int {
+    x := 42
+    return &x  // "moved to heap: x"
+}
+
+// 接口导致逃逸
+func interfaceEscape() {
+    x := 42
+    fmt.Println(x)  // x 逃逸 (interface{} 参数)
+}
+
+// ==================== 最佳实践 ====================
+
+// 预分配切片
+slice := make([]int, 0, expectedSize)
+
+// 复用对象
+// 使用 sync.Pool
+
+// 避免不必要的指针
+type Good struct {
+    x, y int  // 值类型
+}
+
+type Bad struct {
+    x, y *int  // 指针增加 GC 压力
+}
+
+// ==================== 内存分析 ====================
+import _ "net/http/pprof"
+
+// go tool pprof http://localhost:6060/debug/pprof/heap
+// go tool pprof http://localhost:6060/debug/pprof/allocs
+
+// 生成 profile
+f, _ := os.Create("mem.prof")
+pprof.WriteHeapProfile(f)
+// go tool pprof mem.prof
+```
+
+### Rust 内存管理
+
+```rust
+// ==================== 所有权系统 ====================
+fn main() {
+    // 每个值有唯一所有者
+    let s1 = String::from("hello");
+    
+    // 移动 (Move): 所有权转移
+    let s2 = s1;
+    // println!("{}", s1);  // 错误！s1 已无效
+    
+    // 克隆 (Clone): 深拷贝
+    let s3 = s2.clone();
+    println!("{} {}", s2, s3);  // OK
+    
+    // Copy trait: 栈上数据自动复制
+    let x = 5;
+    let y = x;
+    println!("{} {}", x, y);  // OK，整数实现了 Copy
+}
+
+// ==================== 借用 (Borrowing) ====================
+
+// 不可变借用 (&T)
+fn print_len(s: &String) {
+    println!("{}", s.len());
+}
+
+// 可变借用 (&mut T)
+fn push_str(s: &mut String) {
+    s.push_str(" world");
+}
+
+// 借用规则:
+// 1. 任意数量的不可变借用，或
+// 2. 一个可变借用
+// 不能同时存在
+
+let mut s = String::from("hello");
+let r1 = &s;
+let r2 = &s;      // OK: 多个不可变借用
+// let r3 = &mut s;  // 错误！已有不可变借用
+
+// ==================== 生命周期 ====================
+
+// 显式生命周期标注
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() { x } else { y }
+}
+
+// 结构体中的引用
+struct Excerpt<'a> {
+    part: &'a str,
+}
+
+// 静态生命周期
+let s: &'static str = "hello";  // 整个程序期间有效
+
+// ==================== 智能指针 ====================
+
+// Box<T> - 堆分配
+let b = Box::new(5);
+
+// Rc<T> - 引用计数 (单线程)
+use std::rc::Rc;
+let a = Rc::new(5);
+let b = Rc::clone(&a);  // 引用计数 +1
+Rc::strong_count(&a);   // 2
+
+// Arc<T> - 原子引用计数 (多线程)
+use std::sync::Arc;
+let a = Arc::new(5);
+let b = Arc::clone(&a);
+
+// RefCell<T> - 内部可变性 (运行时借用检查)
+use std::cell::RefCell;
+let data = RefCell::new(5);
+*data.borrow_mut() += 1;
+
+// Mutex<T> - 线程安全的内部可变性
+use std::sync::Mutex;
+let m = Mutex::new(5);
+let mut num = m.lock().unwrap();
+*num = 6;
+
+// ==================== Drop trait ====================
+
+struct CustomDrop {
+    data: String,
+}
+
+impl Drop for CustomDrop {
+    fn drop(&mut self) {
+        println!("Dropping: {}", self.data);
+    }
+}
+
+// 手动释放
+let c = CustomDrop { data: String::from("test") };
+drop(c);  // 立即调用 drop
+
+// ==================== 内存布局 ====================
+
+use std::mem;
+
+mem::size_of::<i32>();      // 4
+mem::size_of::<String>();   // 24 (ptr + len + cap)
+mem::align_of::<i32>();     // 4
+
+// 零大小类型
+struct Empty;
+mem::size_of::<Empty>();    // 0
+
+// ==================== unsafe 内存操作 ====================
+
+// 裸指针
+let x = 5;
+let raw_ptr = &x as *const i32;
+
+unsafe {
+    println!("{}", *raw_ptr);
+}
+
+// 手动内存管理
+use std::alloc::{alloc, dealloc, Layout};
+
+unsafe {
+    let layout = Layout::new::<i32>();
+    let ptr = alloc(layout) as *mut i32;
+    *ptr = 42;
+    dealloc(ptr as *mut u8, layout);
+}
+
+// ==================== 内存泄漏 ====================
+
+// 故意泄漏 (有时有用)
+let leaked: &'static str = Box::leak(String::from("hello").into_boxed_str());
+
+// Rc 循环引用导致泄漏
+use std::rc::{Rc, Weak};
+use std::cell::RefCell;
+
+struct Node {
+    next: Option<Rc<RefCell<Node>>>,
+    prev: Option<Weak<RefCell<Node>>>,  // 用 Weak 打破循环
+}
+
+// ==================== 内存分析 ====================
+
+// Valgrind
+// valgrind --tool=memcheck ./target/debug/myapp
+
+// Heaptrack
+// heaptrack ./target/release/myapp
+// heaptrack_gui heaptrack.myapp.*.gz
+
+// 自定义分配器
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+```
+
+### 内存管理对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 管理方式        │ 自动 GC        │ 自动 GC        │ 自动 GC        │ 所有权系统     │
+│ GC 算法         │ 分代标记清除   │ 引用计数+分代  │ 三色并发标记   │ 无             │
+│ GC 暂停         │ 有             │ 有             │ <1ms           │ 无             │
+│ 循环引用        │ 自动处理       │ 分代 GC 处理   │ 自动处理       │ 编译时防止     │
+│ 手动控制        │ ❌             │ gc 模块        │ runtime 包     │ 完全控制       │
+│ 内存池          │ 外部实现       │ 外部实现       │ sync.Pool      │ 自定义分配器   │
+│ 弱引用          │ WeakMap/Set    │ weakref        │ ❌             │ Weak<T>        │
+│ 逃逸分析        │ V8 内部        │ ❌             │ ✅             │ 编译时确定     │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 内存优化建议
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 对象复用 | 对象池 | `__slots__` | `sync.Pool` | 自定义 |
+| 减少分配 | 预分配数组 | 生成器 | 预分配切片 | 栈分配 |
+| 大数据 | 流处理 | 迭代器 | 流式处理 | 零拷贝 |
+| 缓存 | WeakMap | WeakValueDict | 带 TTL | `Weak<T>` |
+| 分析工具 | Chrome DevTools | tracemalloc | pprof | Valgrind |
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
