@@ -10971,6 +10971,606 @@ use_small_heuristics = "Default"
 
 ---
 
+## ⚡ 性能测试
+
+### 性能测试概览
+
+| 语言 | 基准测试工具 | 性能分析 | 内置支持 |
+|------|--------------|----------|----------|
+| TypeScript | Benchmark.js, vitest | Chrome DevTools | ❌ |
+| Python | timeit, pytest-benchmark | cProfile, py-spy | ✅ timeit |
+| Go | testing.B | pprof | ✅ 内置 |
+| Rust | criterion, cargo bench | perf, flamegraph | ✅ 内置 |
+
+### TypeScript 性能测试
+
+```typescript
+// ==================== 简单计时 ====================
+
+console.time('operation');
+doSomething();
+console.timeEnd('operation');  // operation: 123.456ms
+
+// performance API
+const start = performance.now();
+doSomething();
+const end = performance.now();
+console.log(`耗时: ${end - start}ms`);
+
+// ==================== Benchmark.js ====================
+import Benchmark from 'benchmark';
+
+const suite = new Benchmark.Suite();
+
+suite
+  .add('Array.push', function() {
+    const arr = [];
+    for (let i = 0; i < 1000; i++) {
+      arr.push(i);
+    }
+  })
+  .add('Array spread', function() {
+    let arr = [];
+    for (let i = 0; i < 1000; i++) {
+      arr = [...arr, i];
+    }
+  })
+  .on('cycle', function(event: Benchmark.Event) {
+    console.log(String(event.target));
+  })
+  .on('complete', function(this: Benchmark.Suite) {
+    console.log('Fastest is ' + this.filter('fastest').map('name'));
+  })
+  .run({ async: true });
+
+// 输出:
+// Array.push x 45,678 ops/sec ±1.23% (89 runs sampled)
+// Array spread x 1,234 ops/sec ±2.34% (78 runs sampled)
+// Fastest is Array.push
+
+// ==================== Vitest benchmark ====================
+import { bench, describe } from 'vitest';
+
+describe('array operations', () => {
+  bench('Array.push', () => {
+    const arr = [];
+    for (let i = 0; i < 1000; i++) {
+      arr.push(i);
+    }
+  });
+
+  bench('Array spread', () => {
+    let arr = [];
+    for (let i = 0; i < 1000; i++) {
+      arr = [...arr, i];
+    }
+  });
+});
+
+// 运行: vitest bench
+
+// ==================== 内存分析 ====================
+// Node.js
+const used = process.memoryUsage();
+console.log(`heapUsed: ${Math.round(used.heapUsed / 1024 / 1024)} MB`);
+
+// Chrome DevTools
+// 1. Performance 面板录制
+// 2. Memory 面板堆快照
+// 3. Allocation Timeline
+
+// ==================== 性能优化示例 ====================
+// 避免重复计算
+const memoize = <T extends (...args: any[]) => any>(fn: T): T => {
+  const cache = new Map();
+  return ((...args: any[]) => {
+    const key = JSON.stringify(args);
+    if (cache.has(key)) return cache.get(key);
+    const result = fn(...args);
+    cache.set(key, result);
+    return result;
+  }) as T;
+};
+
+// 使用 Web Worker 避免阻塞
+const worker = new Worker('heavy-task.js');
+```
+
+### Python 性能测试
+
+```python
+import time
+import timeit
+import cProfile
+import pstats
+
+# ==================== 简单计时 ====================
+
+start = time.time()
+do_something()
+end = time.time()
+print(f"耗时: {end - start:.3f}s")
+
+# time.perf_counter (更精确)
+start = time.perf_counter()
+do_something()
+print(f"耗时: {time.perf_counter() - start:.6f}s")
+
+# ==================== timeit (推荐) ====================
+
+# 命令行
+# python -m timeit "sum(range(1000))"
+
+# 代码中
+result = timeit.timeit(
+    'sum(range(1000))',
+    number=10000
+)
+print(f"平均耗时: {result / 10000 * 1000:.3f}ms")
+
+# 比较多个实现
+def method1():
+    return sum(range(1000))
+
+def method2():
+    total = 0
+    for i in range(1000):
+        total += i
+    return total
+
+print(timeit.timeit(method1, number=10000))
+print(timeit.timeit(method2, number=10000))
+
+# ==================== pytest-benchmark ====================
+
+# pip install pytest-benchmark
+
+def test_my_function(benchmark):
+    result = benchmark(my_function, arg1, arg2)
+    assert result == expected
+
+# 运行: pytest --benchmark-only
+# 输出:
+# Name                 Min      Max     Mean    StdDev   Rounds
+# test_my_function    1.23ms   1.45ms  1.30ms   0.05ms   1000
+
+# 比较基准
+def test_compare(benchmark):
+    benchmark.pedantic(
+        my_function,
+        args=(arg1,),
+        iterations=100,
+        rounds=10
+    )
+
+# ==================== cProfile 性能分析 ====================
+
+# 命令行
+# python -m cProfile -s cumtime my_script.py
+
+# 代码中
+cProfile.run('my_function()', 'output.prof')
+
+# 分析结果
+stats = pstats.Stats('output.prof')
+stats.sort_stats('cumulative')
+stats.print_stats(20)  # 前 20 行
+
+# 装饰器形式
+def profile(func):
+    def wrapper(*args, **kwargs):
+        profiler = cProfile.Profile()
+        result = profiler.runcall(func, *args, **kwargs)
+        profiler.print_stats(sort='cumulative')
+        return result
+    return wrapper
+
+@profile
+def my_function():
+    pass
+
+# ==================== line_profiler 逐行分析 ====================
+
+# pip install line_profiler
+
+# @profile  # 装饰需要分析的函数
+# def slow_function():
+#     ...
+
+# 运行: kernprof -l -v my_script.py
+
+# ==================== memory_profiler ====================
+
+# pip install memory-profiler
+
+from memory_profiler import profile
+
+@profile
+def my_function():
+    a = [1] * 1000000
+    b = [2] * 2000000
+    del b
+    return a
+
+# 运行: python -m memory_profiler my_script.py
+
+# ==================== py-spy 采样分析 ====================
+
+# pip install py-spy
+
+# 实时查看
+# py-spy top --pid 12345
+
+# 生成火焰图
+# py-spy record -o profile.svg --pid 12345
+# py-spy record -o profile.svg -- python my_script.py
+
+# ==================== scalene (综合分析) ====================
+
+# pip install scalene
+
+# scalene my_script.py
+# 同时分析 CPU、内存、GPU
+```
+
+### Go 性能测试
+
+```go
+import (
+    "testing"
+    "time"
+)
+
+// ==================== 简单计时 ====================
+
+func main() {
+    start := time.Now()
+    doSomething()
+    elapsed := time.Since(start)
+    fmt.Printf("耗时: %v\n", elapsed)
+}
+
+// ==================== testing.B 基准测试 ====================
+
+// benchmark_test.go
+func BenchmarkArrayPush(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        arr := make([]int, 0)
+        for j := 0; j < 1000; j++ {
+            arr = append(arr, j)
+        }
+    }
+}
+
+func BenchmarkPrealloc(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        arr := make([]int, 0, 1000)
+        for j := 0; j < 1000; j++ {
+            arr = append(arr, j)
+        }
+    }
+}
+
+// 运行: go test -bench=. -benchmem
+// 输出:
+// BenchmarkArrayPush-8    50000    25000 ns/op    40000 B/op    20 allocs/op
+// BenchmarkPrealloc-8    200000     8000 ns/op     8192 B/op     1 allocs/op
+
+// ==================== 子基准测试 ====================
+
+func BenchmarkSort(b *testing.B) {
+    sizes := []int{100, 1000, 10000}
+    for _, size := range sizes {
+        b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
+            data := generateData(size)
+            b.ResetTimer()  // 重置计时器
+            for i := 0; i < b.N; i++ {
+                sort.Ints(data)
+            }
+        })
+    }
+}
+
+// ==================== 并行基准测试 ====================
+
+func BenchmarkParallel(b *testing.B) {
+    b.RunParallel(func(pb *testing.PB) {
+        for pb.Next() {
+            doSomething()
+        }
+    })
+}
+
+// ==================== pprof 性能分析 ====================
+
+import (
+    "net/http"
+    _ "net/http/pprof"
+    "runtime/pprof"
+)
+
+// HTTP 方式
+func main() {
+    go func() {
+        http.ListenAndServe("localhost:6060", nil)
+    }()
+    // 访问 http://localhost:6060/debug/pprof/
+}
+
+// CPU profile
+// go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+
+// 内存 profile
+// go tool pprof http://localhost:6060/debug/pprof/heap
+
+// 文件方式
+func main() {
+    f, _ := os.Create("cpu.prof")
+    pprof.StartCPUProfile(f)
+    defer pprof.StopCPUProfile()
+    
+    // 业务代码
+    doWork()
+    
+    // 内存 profile
+    f2, _ := os.Create("mem.prof")
+    pprof.WriteHeapProfile(f2)
+}
+
+// 分析
+// go tool pprof cpu.prof
+// (pprof) top10
+// (pprof) web      # 生成 SVG
+// (pprof) list funcName
+
+// ==================== trace 追踪 ====================
+
+import "runtime/trace"
+
+func main() {
+    f, _ := os.Create("trace.out")
+    trace.Start(f)
+    defer trace.Stop()
+    
+    // 业务代码
+}
+
+// 查看: go tool trace trace.out
+
+// ==================== 基准测试比较 ====================
+
+// 保存基准结果
+// go test -bench=. -count=10 > old.txt
+// (修改代码后)
+// go test -bench=. -count=10 > new.txt
+
+// 比较
+// go install golang.org/x/perf/cmd/benchstat@latest
+// benchstat old.txt new.txt
+```
+
+### Rust 性能测试
+
+```rust
+use std::time::Instant;
+
+// ==================== 简单计时 ====================
+
+fn main() {
+    let start = Instant::now();
+    do_something();
+    let elapsed = start.elapsed();
+    println!("耗时: {:?}", elapsed);
+}
+
+// ==================== 内置基准测试 (nightly) ====================
+
+#![feature(test)]
+extern crate test;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[bench]
+    fn bench_push(b: &mut Bencher) {
+        b.iter(|| {
+            let mut arr = Vec::new();
+            for i in 0..1000 {
+                arr.push(i);
+            }
+        });
+    }
+    
+    #[bench]
+    fn bench_prealloc(b: &mut Bencher) {
+        b.iter(|| {
+            let mut arr = Vec::with_capacity(1000);
+            for i in 0..1000 {
+                arr.push(i);
+            }
+        });
+    }
+}
+
+// 运行: cargo +nightly bench
+
+// ==================== criterion (推荐) ====================
+
+// Cargo.toml
+// [dev-dependencies]
+// criterion = "0.5"
+// [[bench]]
+// name = "my_benchmark"
+// harness = false
+
+// benches/my_benchmark.rs
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn fibonacci(n: u64) -> u64 {
+    match n {
+        0 => 1,
+        1 => 1,
+        n => fibonacci(n - 1) + fibonacci(n - 2),
+    }
+}
+
+fn criterion_benchmark(c: &mut Criterion) {
+    c.bench_function("fib 20", |b| b.iter(|| fibonacci(black_box(20))));
+}
+
+// 比较多个实现
+fn benchmark_compare(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Fibonacci");
+    
+    for i in [10, 15, 20].iter() {
+        group.bench_with_input(
+            BenchmarkId::new("recursive", i),
+            i,
+            |b, i| b.iter(|| fibonacci_recursive(*i))
+        );
+        group.bench_with_input(
+            BenchmarkId::new("iterative", i),
+            i,
+            |b, i| b.iter(|| fibonacci_iterative(*i))
+        );
+    }
+    group.finish();
+}
+
+criterion_group!(benches, criterion_benchmark, benchmark_compare);
+criterion_main!(benches);
+
+// 运行: cargo bench
+// 输出包含统计信息、HTML 报告
+
+// ==================== 防止优化 ====================
+
+use std::hint::black_box;
+
+// 防止编译器优化掉测试代码
+let result = black_box(compute_something(black_box(input)));
+
+// ==================== 火焰图 ====================
+
+// 安装
+// cargo install flamegraph
+
+// 生成
+// cargo flamegraph --bench my_benchmark
+// 或
+// cargo flamegraph -- my_args
+
+// ==================== perf (Linux) ====================
+
+// 构建 release with debug info
+// [profile.release]
+// debug = true
+
+// perf record -g ./target/release/myapp
+// perf report
+
+// ==================== 内存分析 ====================
+
+// DHAT (堆分析)
+// cargo install dhat
+// 添加到代码:
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
+fn main() {
+    let _profiler = dhat::Profiler::new_heap();
+    // ... 代码
+}
+
+// Valgrind (Linux)
+// valgrind --tool=massif ./target/release/myapp
+// ms_print massif.out.*
+
+// ==================== 编译时间分析 ====================
+
+// cargo build --timings
+// 生成 cargo-timing.html
+
+// 详细编译信息
+// RUSTFLAGS="-Z time-passes" cargo +nightly build
+```
+
+### 性能测试对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 基准测试工具    │ Benchmark.js   │ pytest-benchmark│ testing.B     │ criterion      │
+│ 内置支持        │ ❌             │ timeit         │ ✅             │ ✅ (nightly)   │
+│ CPU 分析        │ Chrome DevTools│ cProfile       │ pprof          │ perf/flamegraph│
+│ 内存分析        │ Chrome Memory  │ memory_profiler│ pprof heap     │ DHAT/Valgrind  │
+│ 火焰图          │ Chrome         │ py-spy         │ pprof/go-torch │ flamegraph     │
+│ 统计分析        │ ✅             │ ✅             │ benchstat      │ criterion      │
+│ HTML 报告       │ ❌             │ ❌             │ ❌             │ ✅             │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 性能测试最佳实践
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        性能测试最佳实践                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. 测试环境                                                            │
+│     □ 关闭其他程序，减少干扰                                           │
+│     □ 使用固定的硬件环境                                               │
+│     □ 多次运行取平均值                                                 │
+│     □ 记录环境信息（CPU、内存、OS）                                    │
+│                                                                         │
+│  2. 测试方法                                                            │
+│     □ 预热 (warmup) 避免冷启动影响                                     │
+│     □ 使用 black_box 防止编译器优化                                    │
+│     □ 测试真实数据，避免缓存命中                                       │
+│     □ 分离 setup 和测试代码                                            │
+│                                                                         │
+│  3. 结果分析                                                            │
+│     □ 关注 p50/p99 而非平均值                                          │
+│     □ 检查标准差，确保结果稳定                                         │
+│     □ 比较相对性能而非绝对数值                                         │
+│     □ 结合火焰图定位热点                                               │
+│                                                                         │
+│  4. 持续监控                                                            │
+│     □ CI 中运行基准测试                                                │
+│     □ 对比历史数据                                                     │
+│     □ 设置性能回退告警                                                 │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 常用命令速查
+
+```bash
+# TypeScript
+npx vitest bench                    # Vitest 基准测试
+
+# Python
+python -m timeit "sum(range(1000))" # 快速计时
+python -m cProfile -s time script.py # CPU 分析
+py-spy record -o out.svg -- python script.py # 火焰图
+
+# Go
+go test -bench=. -benchmem          # 运行基准测试
+go test -bench=. -cpuprofile=cpu.prof # CPU profile
+go tool pprof -http=:8080 cpu.prof  # 可视化分析
+benchstat old.txt new.txt           # 比较结果
+
+# Rust
+cargo bench                         # 运行基准测试
+cargo flamegraph                    # 生成火焰图
+cargo build --timings               # 编译时间分析
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
