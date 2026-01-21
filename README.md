@@ -6861,6 +6861,629 @@ impl Rectangle {
 
 ---
 
+## 🧬 泛型函数
+
+### 泛型支持概览
+
+| 语言 | 泛型支持 | 语法 | 约束方式 | 特点 |
+|------|----------|------|----------|------|
+| TypeScript | ✅ | `<T>` | `extends` | 类型擦除 |
+| Python | ✅ (3.12+) | `[T]` | `TypeVar` bound | 仅类型检查 |
+| Go | ✅ (1.18+) | `[T]` | 接口约束 | 编译时单态化 |
+| Rust | ✅ | `<T>` | trait bound | 编译时单态化 |
+
+### TypeScript 泛型
+
+```typescript
+// ==================== 基础泛型函数 ====================
+
+function identity<T>(value: T): T {
+  return value;
+}
+
+// 调用
+identity<string>("hello");  // 显式指定
+identity("hello");          // 类型推断
+identity(42);               // number
+
+// ==================== 多类型参数 ====================
+
+function pair<T, U>(first: T, second: U): [T, U] {
+  return [first, second];
+}
+
+function map<T, U>(arr: T[], fn: (item: T) => U): U[] {
+  return arr.map(fn);
+}
+
+// ==================== 类型约束 (extends) ====================
+
+// 必须有 length 属性
+function logLength<T extends { length: number }>(value: T): T {
+  console.log(value.length);
+  return value;
+}
+
+logLength("hello");     // OK
+logLength([1, 2, 3]);   // OK
+// logLength(123);      // 错误: number 没有 length
+
+// 约束为特定类型
+interface HasId {
+  id: number;
+}
+
+function findById<T extends HasId>(items: T[], id: number): T | undefined {
+  return items.find(item => item.id === id);
+}
+
+// ==================== keyof 约束 ====================
+
+function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
+  return obj[key];
+}
+
+const user = { name: "John", age: 30 };
+getProperty(user, "name");  // string
+getProperty(user, "age");   // number
+// getProperty(user, "foo"); // 错误
+
+// ==================== 条件类型 ====================
+
+type Flatten<T> = T extends Array<infer U> ? U : T;
+
+type A = Flatten<string[]>;  // string
+type B = Flatten<number>;    // number
+
+// ==================== 泛型类 ====================
+
+class Container<T> {
+  private value: T;
+  
+  constructor(value: T) {
+    this.value = value;
+  }
+  
+  getValue(): T {
+    return this.value;
+  }
+  
+  map<U>(fn: (value: T) => U): Container<U> {
+    return new Container(fn(this.value));
+  }
+}
+
+// ==================== 泛型接口 ====================
+
+interface Repository<T> {
+  find(id: number): T | undefined;
+  findAll(): T[];
+  save(entity: T): void;
+  delete(id: number): void;
+}
+
+class UserRepository implements Repository<User> {
+  find(id: number): User | undefined { /* ... */ }
+  findAll(): User[] { /* ... */ }
+  save(entity: User): void { /* ... */ }
+  delete(id: number): void { /* ... */ }
+}
+
+// ==================== 默认类型参数 ====================
+
+interface Response<T = unknown> {
+  data: T;
+  status: number;
+}
+
+function fetch<T = unknown>(url: string): Promise<Response<T>> {
+  // ...
+}
+```
+
+### Python 泛型
+
+```python
+from typing import TypeVar, Generic, Callable, Sequence
+from collections.abc import Iterable
+
+# ==================== 基础泛型函数 ====================
+
+T = TypeVar('T')
+
+def identity(value: T) -> T:
+    return value
+
+# Python 3.12+ 新语法
+def identity[T](value: T) -> T:
+    return value
+
+# ==================== 多类型参数 ====================
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+def pair(first: T, second: U) -> tuple[T, U]:
+    return (first, second)
+
+def map_list[T, U](items: list[T], fn: Callable[[T], U]) -> list[U]:
+    return [fn(item) for item in items]
+
+# ==================== 类型约束 (bound) ====================
+
+from typing import Protocol
+
+class HasLength(Protocol):
+    def __len__(self) -> int: ...
+
+T = TypeVar('T', bound=HasLength)
+
+def log_length(value: T) -> T:
+    print(len(value))
+    return value
+
+# Python 3.12+
+def log_length[T: HasLength](value: T) -> T:
+    print(len(value))
+    return value
+
+# 限制为特定类型
+T = TypeVar('T', int, float)  # 只能是 int 或 float
+
+def add(a: T, b: T) -> T:
+    return a + b
+
+# ==================== Protocol (结构化类型) ====================
+
+from typing import Protocol
+
+class Comparable(Protocol):
+    def __lt__(self, other: 'Comparable') -> bool: ...
+
+def min_value[T: Comparable](a: T, b: T) -> T:
+    return a if a < b else b
+
+# ==================== 泛型类 ====================
+
+class Container(Generic[T]):
+    def __init__(self, value: T):
+        self.value = value
+    
+    def get_value(self) -> T:
+        return self.value
+    
+    def map[U](self, fn: Callable[[T], U]) -> 'Container[U]':
+        return Container(fn(self.value))
+
+# Python 3.12+
+class Container[T]:
+    def __init__(self, value: T):
+        self.value = value
+    
+    def get_value(self) -> T:
+        return self.value
+
+# ==================== 泛型协议 ====================
+
+class Repository(Protocol[T]):
+    def find(self, id: int) -> T | None: ...
+    def find_all(self) -> list[T]: ...
+    def save(self, entity: T) -> None: ...
+
+# ==================== 协变与逆变 ====================
+
+from typing import TypeVar
+
+T_co = TypeVar('T_co', covariant=True)      # 协变
+T_contra = TypeVar('T_contra', contravariant=True)  # 逆变
+
+class Reader(Generic[T_co]):
+    def read(self) -> T_co: ...
+
+class Writer(Generic[T_contra]):
+    def write(self, value: T_contra) -> None: ...
+
+# ==================== ParamSpec (函数签名) ====================
+
+from typing import ParamSpec, Concatenate
+
+P = ParamSpec('P')
+
+def with_logging[T, **P](fn: Callable[P, T]) -> Callable[P, T]:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        print(f"Calling {fn.__name__}")
+        return fn(*args, **kwargs)
+    return wrapper
+```
+
+### Go 泛型
+
+```go
+// ==================== 基础泛型函数 ====================
+
+func Identity[T any](value T) T {
+    return value
+}
+
+// 调用
+Identity[string]("hello")  // 显式指定
+Identity("hello")          // 类型推断
+
+// ==================== 多类型参数 ====================
+
+func Pair[T, U any](first T, second U) (T, U) {
+    return first, second
+}
+
+func Map[T, U any](slice []T, fn func(T) U) []U {
+    result := make([]U, len(slice))
+    for i, v := range slice {
+        result[i] = fn(v)
+    }
+    return result
+}
+
+// ==================== 类型约束 ====================
+
+// 使用接口约束
+type Stringer interface {
+    String() string
+}
+
+func ToString[T Stringer](value T) string {
+    return value.String()
+}
+
+// 内置约束
+import "golang.org/x/exp/constraints"
+
+func Min[T constraints.Ordered](a, b T) T {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+// ==================== 自定义约束 ====================
+
+type Number interface {
+    int | int8 | int16 | int32 | int64 |
+    uint | uint8 | uint16 | uint32 | uint64 |
+    float32 | float64
+}
+
+func Sum[T Number](numbers []T) T {
+    var sum T
+    for _, n := range numbers {
+        sum += n
+    }
+    return sum
+}
+
+// 近似约束 (~)
+type Integer interface {
+    ~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+
+type MyInt int
+// MyInt 满足 Integer 约束，因为底层类型是 int
+
+// ==================== 泛型结构体 ====================
+
+type Container[T any] struct {
+    value T
+}
+
+func NewContainer[T any](value T) *Container[T] {
+    return &Container[T]{value: value}
+}
+
+func (c *Container[T]) Get() T {
+    return c.value
+}
+
+func (c *Container[T]) Set(value T) {
+    c.value = value
+}
+
+// ==================== 泛型接口 ====================
+
+type Repository[T any] interface {
+    Find(id int) (T, error)
+    FindAll() ([]T, error)
+    Save(entity T) error
+    Delete(id int) error
+}
+
+type UserRepository struct{}
+
+func (r *UserRepository) Find(id int) (User, error) { /* ... */ }
+func (r *UserRepository) FindAll() ([]User, error) { /* ... */ }
+func (r *UserRepository) Save(entity User) error { /* ... */ }
+func (r *UserRepository) Delete(id int) error { /* ... */ }
+
+// ==================== 类型推断 ====================
+
+// 部分推断
+func MakePair[T, U any](first T) func(U) (T, U) {
+    return func(second U) (T, U) {
+        return first, second
+    }
+}
+
+// 使用
+makePairWithString := MakePair[string, int]("hello")
+pair := makePairWithString(42)  // ("hello", 42)
+
+// ==================== 常用泛型函数 ====================
+
+// Filter
+func Filter[T any](slice []T, predicate func(T) bool) []T {
+    var result []T
+    for _, v := range slice {
+        if predicate(v) {
+            result = append(result, v)
+        }
+    }
+    return result
+}
+
+// Reduce
+func Reduce[T, U any](slice []T, initial U, fn func(U, T) U) U {
+    result := initial
+    for _, v := range slice {
+        result = fn(result, v)
+    }
+    return result
+}
+
+// Contains
+func Contains[T comparable](slice []T, target T) bool {
+    for _, v := range slice {
+        if v == target {
+            return true
+        }
+    }
+    return false
+}
+```
+
+### Rust 泛型
+
+```rust
+// ==================== 基础泛型函数 ====================
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+// 调用
+identity::<String>(String::from("hello"));  // 显式指定
+identity("hello");                          // 类型推断
+
+// ==================== 多类型参数 ====================
+
+fn pair<T, U>(first: T, second: U) -> (T, U) {
+    (first, second)
+}
+
+fn map<T, U, F>(vec: Vec<T>, f: F) -> Vec<U>
+where
+    F: Fn(T) -> U,
+{
+    vec.into_iter().map(f).collect()
+}
+
+// ==================== trait 约束 ====================
+
+use std::fmt::Display;
+
+fn print_value<T: Display>(value: T) {
+    println!("{}", value);
+}
+
+// 多个约束
+fn compare_and_print<T: PartialOrd + Display>(a: T, b: T) {
+    if a > b {
+        println!("{} > {}", a, b);
+    }
+}
+
+// where 子句 (更清晰)
+fn process<T, U>(t: T, u: U) -> String
+where
+    T: Display + Clone,
+    U: Display + Default,
+{
+    format!("{} - {}", t, u)
+}
+
+// ==================== 常用 trait 约束 ====================
+
+// Clone: 可克隆
+fn duplicate<T: Clone>(value: T) -> (T, T) {
+    (value.clone(), value)
+}
+
+// Default: 有默认值
+fn with_default<T: Default>() -> T {
+    T::default()
+}
+
+// PartialEq: 可比较相等
+fn contains<T: PartialEq>(slice: &[T], target: &T) -> bool {
+    slice.iter().any(|x| x == target)
+}
+
+// Ord: 可排序
+fn min<T: Ord>(a: T, b: T) -> T {
+    if a < b { a } else { b }
+}
+
+// ==================== 泛型结构体 ====================
+
+struct Container<T> {
+    value: T,
+}
+
+impl<T> Container<T> {
+    fn new(value: T) -> Self {
+        Container { value }
+    }
+    
+    fn get(&self) -> &T {
+        &self.value
+    }
+    
+    fn into_inner(self) -> T {
+        self.value
+    }
+}
+
+// 特定类型的实现
+impl Container<String> {
+    fn len(&self) -> usize {
+        self.value.len()
+    }
+}
+
+// 带约束的实现
+impl<T: Display> Container<T> {
+    fn print(&self) {
+        println!("{}", self.value);
+    }
+}
+
+// ==================== 泛型 trait ====================
+
+trait Repository<T> {
+    fn find(&self, id: u32) -> Option<T>;
+    fn find_all(&self) -> Vec<T>;
+    fn save(&mut self, entity: T);
+}
+
+struct UserRepository {
+    users: Vec<User>,
+}
+
+impl Repository<User> for UserRepository {
+    fn find(&self, id: u32) -> Option<User> {
+        self.users.iter().find(|u| u.id == id).cloned()
+    }
+    fn find_all(&self) -> Vec<User> {
+        self.users.clone()
+    }
+    fn save(&mut self, entity: User) {
+        self.users.push(entity);
+    }
+}
+
+// ==================== 关联类型 vs 泛型 ====================
+
+// 泛型 trait: 一个类型可以实现多次
+trait From<T> {
+    fn from(value: T) -> Self;
+}
+
+// 关联类型: 一个类型只能实现一次
+trait Iterator {
+    type Item;
+    fn next(&mut self) -> Option<Self::Item>;
+}
+
+// ==================== impl Trait ====================
+
+// 返回实现某 trait 的类型 (不暴露具体类型)
+fn make_iter() -> impl Iterator<Item = i32> {
+    (0..10).filter(|x| x % 2 == 0)
+}
+
+// 参数中使用
+fn process(iter: impl Iterator<Item = i32>) {
+    for item in iter {
+        println!("{}", item);
+    }
+}
+
+// ==================== 生命周期与泛型 ====================
+
+fn longest<'a, T>(x: &'a T, y: &'a T) -> &'a T
+where
+    T: PartialOrd,
+{
+    if x > y { x } else { y }
+}
+
+struct Ref<'a, T> {
+    value: &'a T,
+}
+
+impl<'a, T> Ref<'a, T> {
+    fn new(value: &'a T) -> Self {
+        Ref { value }
+    }
+}
+
+// ==================== const 泛型 ====================
+
+fn create_array<T: Default + Copy, const N: usize>() -> [T; N] {
+    [T::default(); N]
+}
+
+let arr: [i32; 5] = create_array();
+
+struct Matrix<T, const ROWS: usize, const COLS: usize> {
+    data: [[T; COLS]; ROWS],
+}
+```
+
+### 泛型对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 语法            │ <T>            │ [T] (3.12+)    │ [T]            │ <T>            │
+│ 约束语法        │ extends        │ bound/Protocol │ interface      │ trait bound    │
+│ 类型推断        │ ✅             │ ✅             │ ✅             │ ✅             │
+│ 默认类型        │ ✅             │ ✅             │ ❌             │ ✅             │
+│ 协变/逆变       │ 自动           │ 显式声明       │ ❌             │ 自动           │
+│ const 泛型      │ ❌             │ ❌             │ ❌             │ ✅             │
+│ 特化            │ 条件类型       │ @overload      │ ❌             │ 部分支持       │
+│ 运行时类型      │ 擦除           │ 擦除           │ 保留           │ 单态化         │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 常用泛型模式
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          常用泛型模式                                   │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  1. 容器类型                                                           │
+│     Container<T>, Option<T>, Result<T, E>, Vec<T>                     │
+│                                                                        │
+│  2. 函数式操作                                                         │
+│     map<T, U>(T) -> U                                                 │
+│     filter<T>(predicate: T -> bool)                                   │
+│     reduce<T, U>(initial: U, fn: (U, T) -> U)                        │
+│                                                                        │
+│  3. 仓储模式                                                           │
+│     Repository<T> { find, findAll, save, delete }                     │
+│                                                                        │
+│  4. 工厂模式                                                           │
+│     Factory<T> { create() -> T }                                      │
+│                                                                        │
+│  5. 比较与排序                                                         │
+│     min<T: Ord>(a, b) -> T                                            │
+│     sort<T: Ord>(slice: []T)                                          │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 🔙 函数返回空值处理
 
 ### 返回空值模式概览
