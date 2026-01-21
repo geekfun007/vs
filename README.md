@@ -10478,6 +10478,499 @@ mycli/
 
 ---
 
+## 📝 格式化
+
+### 格式化概览
+
+| 类型 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 字符串插值 | 模板字符串 | f-string | fmt.Sprintf | format! |
+| 代码格式化 | Prettier | Black/Ruff | gofmt | rustfmt |
+| 数字格式 | Intl.NumberFormat | format() | fmt | format! |
+
+### TypeScript 格式化
+
+```typescript
+// ==================== 字符串格式化 ====================
+
+// 模板字符串 (推荐)
+const name = "World";
+const age = 25;
+console.log(`Hello, ${name}! You are ${age} years old.`);
+
+// 表达式
+console.log(`2 + 2 = ${2 + 2}`);
+console.log(`Upper: ${name.toUpperCase()}`);
+
+// 多行
+const html = `
+  <div>
+    <h1>${title}</h1>
+    <p>${content}</p>
+  </div>
+`;
+
+// 标签模板
+function highlight(strings: TemplateStringsArray, ...values: any[]) {
+  return strings.reduce((acc, str, i) => 
+    acc + str + (values[i] ? `<mark>${values[i]}</mark>` : ''), '');
+}
+highlight`Hello ${name}, you are ${age} years old.`;
+
+// ==================== 数字格式化 ====================
+
+const num = 1234567.89;
+
+// toLocaleString
+num.toLocaleString('en-US');           // "1,234,567.89"
+num.toLocaleString('de-DE');           // "1.234.567,89"
+num.toLocaleString('zh-CN');           // "1,234,567.89"
+
+// Intl.NumberFormat
+new Intl.NumberFormat('en-US').format(num);  // "1,234,567.89"
+
+// 货币
+new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+}).format(num);  // "$1,234,567.89"
+
+new Intl.NumberFormat('zh-CN', {
+  style: 'currency',
+  currency: 'CNY',
+}).format(num);  // "¥1,234,567.89"
+
+// 百分比
+new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  minimumFractionDigits: 2,
+}).format(0.1234);  // "12.34%"
+
+// 紧凑表示
+new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+}).format(1234567);  // "1.2M"
+
+// 固定小数位
+num.toFixed(2);           // "1234567.89"
+num.toPrecision(4);       // "1.235e+6"
+num.toExponential(2);     // "1.23e+6"
+
+// 进制
+(255).toString(16);       // "ff"
+(255).toString(2);        // "11111111"
+(255).toString(8);        // "377"
+
+// 填充
+String(5).padStart(3, '0');  // "005"
+String(5).padEnd(3, '0');    // "500"
+
+// ==================== 日期格式化 ====================
+
+const date = new Date();
+
+date.toLocaleDateString('zh-CN');  // "2024/3/15"
+date.toLocaleTimeString('zh-CN');  // "10:30:00"
+date.toLocaleString('zh-CN');      // "2024/3/15 10:30:00"
+
+new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  weekday: 'long',
+}).format(date);  // "2024年3月15日星期五"
+
+// ==================== 代码格式化工具 ====================
+// Prettier: npx prettier --write .
+// ESLint:   npx eslint --fix .
+// 配置: .prettierrc
+/*
+{
+  "semi": true,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "trailingComma": "es5"
+}
+*/
+```
+
+### Python 格式化
+
+```python
+# ==================== 字符串格式化 ====================
+
+name = "World"
+age = 25
+
+# f-string (推荐, Python 3.6+)
+f"Hello, {name}! You are {age} years old."
+f"2 + 2 = {2 + 2}"
+f"Upper: {name.upper()}"
+
+# 格式规范
+f"{age:03d}"           # "025" (补零)
+f"{3.14159:.2f}"       # "3.14" (小数位)
+f"{1000000:,}"         # "1,000,000" (千分位)
+f"{0.25:.1%}"          # "25.0%" (百分比)
+f"{255:x}"             # "ff" (十六进制)
+f"{255:b}"             # "11111111" (二进制)
+f"{name:>10}"          # "     World" (右对齐)
+f"{name:<10}"          # "World     " (左对齐)
+f"{name:^10}"          # "  World   " (居中)
+f"{name:*^10}"         # "**World***" (填充)
+
+# 调试 (Python 3.8+)
+f"{name=}"             # "name='World'"
+f"{age=}"              # "age=25"
+
+# format() 方法
+"Hello, {}!".format(name)
+"Hello, {0}! {0} is {1}.".format(name, age)
+"Hello, {name}!".format(name=name)
+
+# % 格式化 (旧式)
+"Hello, %s! You are %d years old." % (name, age)
+"Pi is %.2f" % 3.14159
+
+# ==================== 数字格式化 ====================
+
+num = 1234567.89
+
+# format() 内置函数
+format(num, ',')           # "1,234,567.89"
+format(num, ',.2f')        # "1,234,567.89"
+format(0.25, '.1%')        # "25.0%"
+format(255, 'x')           # "ff"
+format(255, '08b')         # "11111111"
+
+# locale 模块
+import locale
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+locale.format_string('%d', num, grouping=True)
+
+# Decimal 精确格式化
+from decimal import Decimal
+Decimal('1234.5').quantize(Decimal('0.00'))  # Decimal('1234.50')
+
+# ==================== 日期格式化 ====================
+
+from datetime import datetime
+
+now = datetime.now()
+
+now.strftime('%Y-%m-%d')          # "2024-03-15"
+now.strftime('%Y年%m月%d日')       # "2024年03月15日"
+now.strftime('%H:%M:%S')          # "10:30:00"
+now.strftime('%Y-%m-%d %H:%M:%S') # "2024-03-15 10:30:00"
+now.strftime('%A, %B %d, %Y')     # "Friday, March 15, 2024"
+
+# f-string 中使用
+f"{now:%Y-%m-%d}"                 # "2024-03-15"
+
+# ==================== 多行/文本格式化 ====================
+
+import textwrap
+
+# 去除缩进
+text = """
+    Hello
+    World
+"""
+textwrap.dedent(text)
+
+# 自动换行
+textwrap.fill(long_text, width=80)
+
+# pprint 美化输出
+from pprint import pprint
+pprint(complex_data, width=60, depth=2)
+
+# ==================== 代码格式化工具 ====================
+# Black: black .
+# Ruff:  ruff format .
+# isort: isort .
+
+# pyproject.toml
+"""
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I"]
+"""
+```
+
+### Go 格式化
+
+```go
+import "fmt"
+
+// ==================== 字符串格式化 ====================
+
+name := "World"
+age := 25
+
+// fmt.Sprintf
+fmt.Sprintf("Hello, %s! You are %d years old.", name, age)
+
+// 常用格式动词
+fmt.Sprintf("%v", value)     // 默认格式
+fmt.Sprintf("%+v", struct_)  // 带字段名
+fmt.Sprintf("%#v", value)    // Go 语法表示
+fmt.Sprintf("%T", value)     // 类型
+
+fmt.Sprintf("%t", true)      // "true" (布尔)
+fmt.Sprintf("%d", 42)        // "42" (十进制)
+fmt.Sprintf("%b", 42)        // "101010" (二进制)
+fmt.Sprintf("%o", 42)        // "52" (八进制)
+fmt.Sprintf("%x", 42)        // "2a" (十六进制小写)
+fmt.Sprintf("%X", 42)        // "2A" (十六进制大写)
+
+fmt.Sprintf("%f", 3.14)      // "3.140000" (浮点)
+fmt.Sprintf("%.2f", 3.14159) // "3.14" (精度)
+fmt.Sprintf("%e", 1234.5)    // "1.234500e+03" (科学计数)
+fmt.Sprintf("%g", 1234.5)    // "1234.5" (紧凑)
+
+fmt.Sprintf("%s", "hello")   // "hello" (字符串)
+fmt.Sprintf("%q", "hello")   // "\"hello\"" (带引号)
+fmt.Sprintf("%c", 65)        // "A" (字符)
+
+fmt.Sprintf("%p", &value)    // "0xc000..." (指针)
+
+// 宽度和精度
+fmt.Sprintf("%5d", 42)       // "   42" (宽度 5)
+fmt.Sprintf("%-5d", 42)      // "42   " (左对齐)
+fmt.Sprintf("%05d", 42)      // "00042" (补零)
+fmt.Sprintf("%8.2f", 3.14)   // "    3.14"
+
+// ==================== 数字格式化 ====================
+
+import "golang.org/x/text/language"
+import "golang.org/x/text/message"
+
+num := 1234567.89
+
+// 千分位分隔
+p := message.NewPrinter(language.English)
+p.Sprintf("%d", 1234567)     // "1,234,567"
+
+p = message.NewPrinter(language.German)
+p.Sprintf("%d", 1234567)     // "1.234.567"
+
+// 手动实现千分位
+func formatNumber(n int) string {
+    s := strconv.Itoa(n)
+    // ... 添加分隔符逻辑
+}
+
+// ==================== 日期格式化 ====================
+
+import "time"
+
+now := time.Now()
+
+// Go 使用参考时间: Mon Jan 2 15:04:05 MST 2006
+now.Format("2006-01-02")           // "2024-03-15"
+now.Format("2006年01月02日")        // "2024年03月15日"
+now.Format("15:04:05")             // "10:30:00"
+now.Format("2006-01-02 15:04:05")  // "2024-03-15 10:30:00"
+now.Format(time.RFC3339)           // "2024-03-15T10:30:00+08:00"
+
+// 预定义格式
+now.Format(time.Kitchen)           // "10:30AM"
+now.Format(time.RFC822)            // "15 Mar 24 10:30 CST"
+
+// ==================== JSON 格式化 ====================
+
+import "encoding/json"
+
+// 紧凑 JSON
+data, _ := json.Marshal(obj)
+
+// 美化 JSON
+data, _ := json.MarshalIndent(obj, "", "  ")
+
+// ==================== 代码格式化工具 ====================
+// gofmt:    gofmt -w .
+// goimports: goimports -w .
+// go fmt:   go fmt ./...
+
+// 无需配置，强制统一风格
+```
+
+### Rust 格式化
+
+```rust
+// ==================== 字符串格式化 ====================
+
+let name = "World";
+let age = 25;
+
+// format! 宏
+format!("Hello, {}! You are {} years old.", name, age);
+format!("Hello, {name}! You are {age} years old.");  // 命名参数
+
+// 位置参数
+format!("{0} {1} {0}", "Hello", "World");  // "Hello World Hello"
+
+// 格式规范
+format!("{:5}", 42);         // "   42" (宽度)
+format!("{:<5}", 42);        // "42   " (左对齐)
+format!("{:>5}", 42);        // "   42" (右对齐)
+format!("{:^5}", 42);        // " 42  " (居中)
+format!("{:0>5}", 42);       // "00042" (填充)
+format!("{:*^5}", 42);       // "*42**"
+
+format!("{:.2}", 3.14159);   // "3.14" (精度)
+format!("{:8.2}", 3.14);     // "    3.14"
+
+format!("{:b}", 42);         // "101010" (二进制)
+format!("{:o}", 42);         // "52" (八进制)
+format!("{:x}", 255);        // "ff" (十六进制)
+format!("{:X}", 255);        // "FF"
+format!("{:#x}", 255);       // "0xff" (带前缀)
+format!("{:#b}", 42);        // "0b101010"
+
+format!("{:e}", 1234.5);     // "1.2345e3" (科学计数)
+format!("{:E}", 1234.5);     // "1.2345E3"
+
+format!("{:?}", value);      // Debug 格式
+format!("{:#?}", value);     // Debug 美化格式
+format!("{:p}", &value);     // 指针地址
+
+// ==================== 数字格式化 ====================
+
+let num = 1234567.89f64;
+
+// 千分位 (需要外部 crate 或手动实现)
+// 使用 num-format crate
+use num_format::{Locale, ToFormattedString};
+let formatted = 1234567.to_formatted_string(&Locale::en);  // "1,234,567"
+
+// 手动实现
+fn format_number(n: i64) -> String {
+    n.to_string()
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+// ==================== 日期格式化 ====================
+
+use chrono::{DateTime, Utc, Local};
+
+let now: DateTime<Local> = Local::now();
+
+now.format("%Y-%m-%d").to_string();           // "2024-03-15"
+now.format("%Y年%m月%d日").to_string();        // "2024年03月15日"
+now.format("%H:%M:%S").to_string();           // "10:30:00"
+now.format("%Y-%m-%d %H:%M:%S").to_string();  // "2024-03-15 10:30:00"
+now.format("%A, %B %d, %Y").to_string();      // "Friday, March 15, 2024"
+
+now.to_rfc3339();                             // "2024-03-15T10:30:00+08:00"
+now.to_rfc2822();                             // "Fri, 15 Mar 2024 10:30:00 +0800"
+
+// ==================== 自定义格式化 ====================
+
+use std::fmt;
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+// Display trait (用户友好)
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+
+// Debug trait (调试用)
+impl fmt::Debug for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Point")
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .finish()
+    }
+}
+
+// 或使用 derive
+#[derive(Debug)]
+struct Point { x: i32, y: i32 }
+
+let p = Point { x: 10, y: 20 };
+format!("{}", p);    // "(10, 20)" (Display)
+format!("{:?}", p);  // "Point { x: 10, y: 20 }" (Debug)
+
+// ==================== 输出宏 ====================
+
+println!("Hello, World!");           // 带换行
+print!("Hello");                     // 不带换行
+eprintln!("Error!");                 // 标准错误
+eprint!("Warning");                  // 标准错误，不带换行
+
+dbg!(value);                         // 调试输出 (含文件行号)
+// [src/main.rs:10] value = 42
+
+// ==================== 代码格式化工具 ====================
+// rustfmt: rustfmt src/*.rs
+// cargo:   cargo fmt
+
+// rustfmt.toml
+/*
+max_width = 100
+tab_spaces = 4
+edition = "2021"
+use_small_heuristics = "Default"
+*/
+```
+
+### 格式化对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 字符串插值      │ `${}`          │ f"{}"          │ fmt.Sprintf    │ format!        │
+│ 十六进制        │ toString(16)   │ {:x}           │ %x             │ {:x}           │
+│ 补零            │ padStart       │ {:05d}         │ %05d           │ {:05}          │
+│ 小数精度        │ toFixed(2)     │ {:.2f}         │ %.2f           │ {:.2}          │
+│ 千分位          │ toLocaleString │ {:,}           │ message.Printer│ 外部 crate     │
+│ 调试输出        │ console.log    │ pprint         │ %#v            │ {:?} / dbg!    │
+│ 代码格式化      │ Prettier       │ Black/Ruff     │ gofmt          │ rustfmt        │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 格式化速查表
+
+```
+┌──────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 需求         │ TypeScript     │ Python         │ Go             │ Rust           │
+├──────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 整数         │ `${n}`         │ f"{n}"         │ %d             │ {}             │
+│ 浮点数       │ `${n}`         │ f"{n}"         │ %f             │ {}             │
+│ 2位小数      │ n.toFixed(2)   │ f"{n:.2f}"     │ %.2f           │ {:.2}          │
+│ 补零5位      │ padStart(5,'0')│ f"{n:05d}"     │ %05d           │ {:05}          │
+│ 左对齐10位   │ padEnd(10)     │ f"{s:<10}"     │ %-10s          │ {:<10}         │
+│ 右对齐10位   │ padStart(10)   │ f"{s:>10}"     │ %10s           │ {:>10}         │
+│ 居中10位     │ 手动           │ f"{s:^10}"     │ 手动           │ {:^10}         │
+│ 十六进制     │ n.toString(16) │ f"{n:x}"       │ %x             │ {:x}           │
+│ 二进制       │ n.toString(2)  │ f"{n:b}"       │ %b             │ {:b}           │
+│ 百分比       │ Intl           │ f"{n:.1%}"     │ 手动           │ 手动           │
+│ 千分位       │ toLocaleString │ f"{n:,}"       │ message        │ num-format     │
+│ 科学计数     │ toExponential  │ f"{n:e}"       │ %e             │ {:e}           │
+└──────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
