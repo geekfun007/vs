@@ -448,6 +448,323 @@ math.Floor(-3.7)    // -4.0 (不同！)
 
 ---
 
+## 🔄 Round 取整函数对比
+
+### 取整函数概览
+
+| 函数 | 行为 | 示例 |
+|------|------|------|
+| `round` | 四舍五入 | round(2.5) → 2 或 3 |
+| `floor` | 向下取整（向负无穷） | floor(-2.3) → -3 |
+| `ceil` | 向上取整（向正无穷） | ceil(2.1) → 3 |
+| `trunc` | 向零取整 | trunc(-2.7) → -2 |
+
+### 行为对比图示
+
+```
+数轴:  -4    -3    -2    -1     0     1     2     3     4
+        |     |     |     |     |     |     |     |     |
+        
+输入: -2.7
+├─ floor(-2.7) = -3  ←───────●
+├─ ceil(-2.7)  = -2          ●───────→
+├─ trunc(-2.7) = -2          ●───────→  (向零)
+└─ round(-2.7) = -3  ←───────●         (四舍五入)
+
+输入: 2.3
+├─ floor(2.3)  = 2   ←───────●
+├─ ceil(2.3)   = 3           ●───────→
+├─ trunc(2.3)  = 2   ←───────●         (向零)
+└─ round(2.3)  = 2   ←───────●         (四舍五入)
+```
+
+### TypeScript 取整函数
+
+```typescript
+const n = 2.7;
+const neg = -2.7;
+
+// ==================== round (四舍五入) ====================
+Math.round(2.4);    // 2
+Math.round(2.5);    // 3  (0.5 向上)
+Math.round(2.6);    // 3
+Math.round(-2.4);   // -2
+Math.round(-2.5);   // -2 (0.5 向上，即向正无穷)
+Math.round(-2.6);   // -3
+
+// ==================== floor (向下取整) ====================
+Math.floor(2.7);    // 2
+Math.floor(2.1);    // 2
+Math.floor(-2.1);   // -3 (向负无穷)
+Math.floor(-2.7);   // -3
+
+// ==================== ceil (向上取整) ====================
+Math.ceil(2.1);     // 3
+Math.ceil(2.9);     // 3
+Math.ceil(-2.1);    // -2 (向正无穷)
+Math.ceil(-2.9);    // -2
+
+// ==================== trunc (向零取整) ====================
+Math.trunc(2.7);    // 2
+Math.trunc(-2.7);   // -2
+
+// ==================== 精度问题处理 ====================
+// 银行家舍入法 (四舍六入五成双)
+function bankersRound(n: number, decimals: number = 0): number {
+  const factor = Math.pow(10, decimals);
+  const shifted = n * factor;
+  const truncated = Math.trunc(shifted);
+  const decimal = shifted - truncated;
+  
+  if (Math.abs(decimal) === 0.5) {
+    // 0.5 时取最近的偶数
+    return (truncated % 2 === 0 ? truncated : truncated + Math.sign(n)) / factor;
+  }
+  return Math.round(shifted) / factor;
+}
+
+bankersRound(2.5);   // 2 (取偶)
+bankersRound(3.5);   // 4 (取偶)
+bankersRound(2.6);   // 3
+
+// ==================== 保留小数位 ====================
+// 四舍五入到 2 位小数
+Math.round(3.14159 * 100) / 100;  // 3.14
+
+// 通用函数
+function roundTo(n: number, decimals: number): number {
+  const factor = Math.pow(10, decimals);
+  return Math.round(n * factor) / factor;
+}
+
+roundTo(3.14159, 2);   // 3.14
+roundTo(3.14159, 3);   // 3.142
+```
+
+### Python 取整函数
+
+```python
+import math
+from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_EVEN
+
+n = 2.7
+neg = -2.7
+
+# ==================== round (银行家舍入) ====================
+round(2.4)      # 2
+round(2.5)      # 2  ⚠️ Python 3 使用银行家舍入！
+round(2.6)      # 3
+round(3.5)      # 4  (取偶数)
+round(-2.5)     # -2 (取偶数)
+
+# 指定小数位
+round(3.14159, 2)   # 3.14
+round(3.145, 2)     # 3.14 ⚠️ (银行家舍入)
+round(3.155, 2)     # 3.15
+
+# ==================== floor (向下取整) ====================
+math.floor(2.7)     # 2
+math.floor(2.1)     # 2
+math.floor(-2.1)    # -3
+math.floor(-2.7)    # -3
+
+# 整数除法也是 floor
+7 // 3              # 2
+-7 // 3             # -3 (向下)
+
+# ==================== ceil (向上取整) ====================
+math.ceil(2.1)      # 3
+math.ceil(2.9)      # 3
+math.ceil(-2.1)     # -2
+math.ceil(-2.9)     # -2
+
+# ==================== trunc (向零取整) ====================
+math.trunc(2.7)     # 2
+math.trunc(-2.7)    # -2
+int(2.7)            # 2 (等效)
+int(-2.7)           # -2
+
+# ==================== Decimal 精确舍入 ====================
+# 传统四舍五入
+Decimal('2.5').quantize(Decimal('1'), rounding=ROUND_HALF_UP)  # 3
+Decimal('3.5').quantize(Decimal('1'), rounding=ROUND_HALF_UP)  # 4
+
+# 银行家舍入
+Decimal('2.5').quantize(Decimal('1'), rounding=ROUND_HALF_EVEN)  # 2
+Decimal('3.5').quantize(Decimal('1'), rounding=ROUND_HALF_EVEN)  # 4
+
+# 保留小数位
+Decimal('3.14159').quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)  # 3.14
+
+# ==================== 自定义四舍五入 ====================
+def round_half_up(n, decimals=0):
+    """传统四舍五入 (非银行家舍入)"""
+    multiplier = 10 ** decimals
+    return math.floor(n * multiplier + 0.5) / multiplier
+
+round_half_up(2.5)    # 3
+round_half_up(3.5)    # 4
+round_half_up(-2.5)   # -2
+```
+
+### Go 取整函数
+
+```go
+import "math"
+
+n := 2.7
+neg := -2.7
+
+// ==================== Round (四舍五入) ====================
+math.Round(2.4)     // 2
+math.Round(2.5)     // 3  (Go 使用 "round half away from zero")
+math.Round(2.6)     // 3
+math.Round(-2.4)    // -2
+math.Round(-2.5)    // -3 (远离零)
+math.Round(-2.6)    // -3
+
+// ==================== Floor (向下取整) ====================
+math.Floor(2.7)     // 2
+math.Floor(2.1)     // 2
+math.Floor(-2.1)    // -3
+math.Floor(-2.7)    // -3
+
+// ==================== Ceil (向上取整) ====================
+math.Ceil(2.1)      // 3
+math.Ceil(2.9)      // 3
+math.Ceil(-2.1)     // -2
+math.Ceil(-2.9)     // -2
+
+// ==================== Trunc (向零取整) ====================
+math.Trunc(2.7)     // 2
+math.Trunc(-2.7)    // -2
+
+// ==================== RoundToEven (银行家舍入, Go 1.10+) ====================
+math.RoundToEven(2.5)   // 2
+math.RoundToEven(3.5)   // 4
+math.RoundToEven(-2.5)  // -2
+math.RoundToEven(-3.5)  // -4
+
+// ==================== 保留小数位 ====================
+func roundTo(n float64, decimals int) float64 {
+    factor := math.Pow(10, float64(decimals))
+    return math.Round(n*factor) / factor
+}
+
+roundTo(3.14159, 2)  // 3.14
+roundTo(3.14159, 3)  // 3.142
+
+// 转为整数
+int(math.Round(2.7))  // 3
+int(math.Floor(2.7))  // 2
+```
+
+### Rust 取整函数
+
+```rust
+let n: f64 = 2.7;
+let neg: f64 = -2.7;
+
+// ==================== round (四舍五入) ====================
+(2.4_f64).round()   // 2.0
+(2.5_f64).round()   // 3.0 (远离零)
+(2.6_f64).round()   // 3.0
+(-2.4_f64).round()  // -2.0
+(-2.5_f64).round()  // -3.0 (远离零)
+(-2.6_f64).round()  // -3.0
+
+// ==================== floor (向下取整) ====================
+(2.7_f64).floor()   // 2.0
+(2.1_f64).floor()   // 2.0
+(-2.1_f64).floor()  // -3.0
+(-2.7_f64).floor()  // -3.0
+
+// ==================== ceil (向上取整) ====================
+(2.1_f64).ceil()    // 3.0
+(2.9_f64).ceil()    // 3.0
+(-2.1_f64).ceil()   // -2.0
+(-2.9_f64).ceil()   // -2.0
+
+// ==================== trunc (向零取整) ====================
+(2.7_f64).trunc()   // 2.0
+(-2.7_f64).trunc()  // -2.0
+
+// ==================== 转为整数 ====================
+(2.7_f64).round() as i32    // 3
+(2.7_f64).floor() as i32    // 2
+(-2.7_f64).round() as i32   // -3
+
+// ==================== 保留小数位 ====================
+fn round_to(n: f64, decimals: u32) -> f64 {
+    let factor = 10_f64.powi(decimals as i32);
+    (n * factor).round() / factor
+}
+
+round_to(3.14159, 2)  // 3.14
+round_to(3.14159, 3)  // 3.142
+
+// ==================== 银行家舍入 (需要手动实现或使用 crate) ====================
+fn round_half_even(n: f64) -> f64 {
+    let floor = n.floor();
+    let frac = n - floor;
+    
+    if (frac - 0.5).abs() < f64::EPSILON {
+        // 正好是 0.5，取偶数
+        if floor as i64 % 2 == 0 {
+            floor
+        } else {
+            floor + 1.0
+        }
+    } else {
+        n.round()
+    }
+}
+
+round_half_even(2.5)  // 2.0
+round_half_even(3.5)  // 4.0
+```
+
+### 取整函数对比总结
+
+```
+┌──────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 输入         │ round          │ floor          │ ceil           │ trunc          │
+├──────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│  2.3         │  2             │  2             │  3             │  2             │
+│  2.5         │  3 (或 2*)     │  2             │  3             │  2             │
+│  2.7         │  3             │  2             │  3             │  2             │
+│ -2.3         │ -2             │ -3             │ -2             │ -2             │
+│ -2.5         │ -3 (或 -2*)    │ -3             │ -2             │ -2             │
+│ -2.7         │ -3             │ -3             │ -2             │ -2             │
+└──────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+
+* round(2.5) 结果因语言而异:
+  - TypeScript/Go/Rust: 3 (远离零)
+  - Python: 2 (银行家舍入，取偶数)
+```
+
+### 0.5 舍入规则对比
+
+| 语言 | round(2.5) | round(3.5) | round(-2.5) | 规则名称 |
+|------|------------|------------|-------------|----------|
+| TypeScript | 3 | 4 | -2 | Round half up |
+| Python | 2 | 4 | -2 | Bankers (half even) |
+| Go `Round` | 3 | 4 | -3 | Round half away from zero |
+| Go `RoundToEven` | 2 | 4 | -2 | Bankers (half even) |
+| Rust | 3 | 4 | -3 | Round half away from zero |
+
+### 何时使用哪种取整
+
+| 场景 | 推荐函数 | 原因 |
+|------|----------|------|
+| 金融计算 | 银行家舍入 | 统计上无偏差 |
+| 像素/坐标 | floor/ceil | 确定方向 |
+| 数组索引 | floor 或 trunc | 向下取整 |
+| 四舍五入显示 | round | 用户直觉 |
+| 向零截断 | trunc | 去掉小数 |
+
+---
+
 ## 🎭 装饰器模式对比
 
 装饰器是一种在不修改原始代码的情况下增强函数/类行为的模式。
