@@ -9797,6 +9797,687 @@ let is_some_and_positive = matches!(option, Some(x) if x > 0);
 
 ---
 
+## 💻 CLI 开发
+
+### CLI 开发概览
+
+| 语言 | 参数解析库 | 推荐框架 | 分发方式 |
+|------|------------|----------|----------|
+| TypeScript | commander, yargs | oclif | npm, pkg |
+| Python | argparse, click | typer | pip, PyInstaller |
+| Go | flag, cobra | cobra | 单二进制 |
+| Rust | clap, structopt | clap | 单二进制 |
+
+### TypeScript CLI 开发
+
+```typescript
+// ==================== 原生参数读取 ====================
+// process.argv: ['node', 'script.js', 'arg1', 'arg2']
+const args = process.argv.slice(2);
+console.log(args);
+
+// ==================== commander ====================
+import { Command } from 'commander';
+
+const program = new Command();
+
+program
+  .name('mycli')
+  .description('My awesome CLI tool')
+  .version('1.0.0');
+
+program
+  .command('greet <name>')
+  .description('Greet someone')
+  .option('-l, --loud', 'Say it loudly')
+  .option('-t, --times <n>', 'Repeat times', '1')
+  .action((name, options) => {
+    const greeting = `Hello, ${name}!`;
+    const times = parseInt(options.times);
+    for (let i = 0; i < times; i++) {
+      console.log(options.loud ? greeting.toUpperCase() : greeting);
+    }
+  });
+
+program
+  .command('config')
+  .description('Manage configuration')
+  .option('--get <key>', 'Get config value')
+  .option('--set <key=value>', 'Set config value')
+  .action((options) => {
+    if (options.get) {
+      console.log(getConfig(options.get));
+    }
+    if (options.set) {
+      const [key, value] = options.set.split('=');
+      setConfig(key, value);
+    }
+  });
+
+program.parse();
+
+// ==================== yargs ====================
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
+
+yargs(hideBin(process.argv))
+  .command('greet <name>', 'Greet someone', (yargs) => {
+    return yargs.positional('name', {
+      describe: 'Name to greet',
+      type: 'string',
+    });
+  }, (argv) => {
+    console.log(`Hello, ${argv.name}!`);
+  })
+  .option('verbose', {
+    alias: 'v',
+    type: 'boolean',
+    description: 'Run with verbose logging',
+  })
+  .demandCommand(1)
+  .help()
+  .parse();
+
+// ==================== 错误退出 ====================
+// 退出码约定:
+// 0: 成功
+// 1: 一般错误
+// 2: 参数错误
+
+function main() {
+  try {
+    const result = doSomething();
+    console.log(result);
+    process.exit(0);
+  } catch (error) {
+    console.error('Error:', error.message);
+    process.exit(1);
+  }
+}
+
+// 未捕获异常
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught:', error);
+  process.exit(1);
+});
+
+// 信号处理
+process.on('SIGINT', () => {
+  console.log('\nInterrupted');
+  process.exit(130);  // 128 + 2 (SIGINT)
+});
+
+// ==================== 用户交互 ====================
+import inquirer from 'inquirer';
+
+const answers = await inquirer.prompt([
+  {
+    type: 'input',
+    name: 'name',
+    message: 'What is your name?',
+  },
+  {
+    type: 'list',
+    name: 'color',
+    message: 'Pick a color:',
+    choices: ['Red', 'Green', 'Blue'],
+  },
+  {
+    type: 'confirm',
+    name: 'confirm',
+    message: 'Are you sure?',
+  },
+]);
+
+// ==================== 输出美化 ====================
+import chalk from 'chalk';
+import ora from 'ora';
+
+console.log(chalk.green('Success!'));
+console.log(chalk.red.bold('Error!'));
+console.log(chalk.yellow('Warning'));
+
+const spinner = ora('Loading...').start();
+await doAsyncWork();
+spinner.succeed('Done!');
+// spinner.fail('Failed!');
+```
+
+### Python CLI 开发
+
+```python
+import sys
+import argparse
+
+# ==================== 原生参数读取 ====================
+# sys.argv: ['script.py', 'arg1', 'arg2']
+args = sys.argv[1:]
+print(args)
+
+# ==================== argparse (标准库) ====================
+parser = argparse.ArgumentParser(
+    prog='mycli',
+    description='My awesome CLI tool'
+)
+
+parser.add_argument('name', help='Name to greet')
+parser.add_argument('-l', '--loud', action='store_true', help='Say it loudly')
+parser.add_argument('-t', '--times', type=int, default=1, help='Repeat times')
+parser.add_argument('--version', action='version', version='%(prog)s 1.0.0')
+
+args = parser.parse_args()
+
+greeting = f"Hello, {args.name}!"
+for _ in range(args.times):
+    print(greeting.upper() if args.loud else greeting)
+
+# 子命令
+parser = argparse.ArgumentParser()
+subparsers = parser.add_subparsers(dest='command')
+
+greet_parser = subparsers.add_parser('greet', help='Greet someone')
+greet_parser.add_argument('name')
+
+config_parser = subparsers.add_parser('config', help='Manage config')
+config_parser.add_argument('--get', metavar='KEY')
+config_parser.add_argument('--set', metavar='KEY=VALUE')
+
+# ==================== click ====================
+import click
+
+@click.group()
+@click.version_option('1.0.0')
+def cli():
+    """My awesome CLI tool"""
+    pass
+
+@cli.command()
+@click.argument('name')
+@click.option('-l', '--loud', is_flag=True, help='Say it loudly')
+@click.option('-t', '--times', default=1, help='Repeat times')
+def greet(name, loud, times):
+    """Greet someone"""
+    greeting = f"Hello, {name}!"
+    for _ in range(times):
+        click.echo(greeting.upper() if loud else greeting)
+
+@cli.command()
+@click.option('--get', 'key', help='Get config value')
+@click.option('--set', 'keyvalue', help='Set config value')
+def config(key, keyvalue):
+    """Manage configuration"""
+    if key:
+        click.echo(get_config(key))
+    if keyvalue:
+        k, v = keyvalue.split('=')
+        set_config(k, v)
+
+if __name__ == '__main__':
+    cli()
+
+# ==================== typer (推荐，类型提示) ====================
+import typer
+
+app = typer.Typer(help="My awesome CLI tool")
+
+@app.command()
+def greet(
+    name: str = typer.Argument(..., help="Name to greet"),
+    loud: bool = typer.Option(False, "--loud", "-l", help="Say it loudly"),
+    times: int = typer.Option(1, "--times", "-t", help="Repeat times"),
+):
+    """Greet someone"""
+    greeting = f"Hello, {name}!"
+    for _ in range(times):
+        typer.echo(greeting.upper() if loud else greeting)
+
+@app.command()
+def config(
+    get: str = typer.Option(None, "--get", help="Get config value"),
+    set_: str = typer.Option(None, "--set", help="Set config value"),
+):
+    """Manage configuration"""
+    if get:
+        typer.echo(get_config(get))
+    if set_:
+        k, v = set_.split('=')
+        set_config(k, v)
+
+if __name__ == "__main__":
+    app()
+
+# ==================== 错误退出 ====================
+import sys
+
+def main():
+    try:
+        result = do_something()
+        print(result)
+        sys.exit(0)
+    except ValueError as e:
+        print(f"Invalid input: {e}", file=sys.stderr)
+        sys.exit(2)  # 参数错误
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+# click/typer 方式
+@app.command()
+def cmd():
+    if error_condition:
+        raise typer.Exit(code=1)
+    
+    # 或带消息
+    raise typer.Abort()  # 退出码 1
+
+# ==================== 用户交互 ====================
+# 基础输入
+name = input("What is your name? ")
+
+# rich 库 (推荐)
+from rich.prompt import Prompt, Confirm
+from rich.console import Console
+
+console = Console()
+
+name = Prompt.ask("What is your name?")
+color = Prompt.ask("Pick a color", choices=["red", "green", "blue"])
+confirmed = Confirm.ask("Are you sure?")
+
+# 输出美化
+console.print("[green]Success![/green]")
+console.print("[red bold]Error![/red bold]")
+
+# 进度条
+from rich.progress import track
+for item in track(items, description="Processing..."):
+    process(item)
+```
+
+### Go CLI 开发
+
+```go
+package main
+
+import (
+    "flag"
+    "fmt"
+    "os"
+)
+
+// ==================== 原生参数读取 ====================
+func main() {
+    // os.Args: ["./program", "arg1", "arg2"]
+    args := os.Args[1:]
+    fmt.Println(args)
+}
+
+// ==================== flag (标准库) ====================
+func main() {
+    // 定义 flag
+    name := flag.String("name", "World", "Name to greet")
+    loud := flag.Bool("loud", false, "Say it loudly")
+    times := flag.Int("times", 1, "Repeat times")
+    
+    // 解析
+    flag.Parse()
+    
+    // 位置参数
+    args := flag.Args()
+    
+    greeting := fmt.Sprintf("Hello, %s!", *name)
+    for i := 0; i < *times; i++ {
+        if *loud {
+            fmt.Println(strings.ToUpper(greeting))
+        } else {
+            fmt.Println(greeting)
+        }
+    }
+}
+
+// ==================== cobra (推荐) ====================
+import "github.com/spf13/cobra"
+
+var (
+    loud  bool
+    times int
+)
+
+var rootCmd = &cobra.Command{
+    Use:     "mycli",
+    Short:   "My awesome CLI tool",
+    Version: "1.0.0",
+}
+
+var greetCmd = &cobra.Command{
+    Use:   "greet <name>",
+    Short: "Greet someone",
+    Args:  cobra.ExactArgs(1),
+    Run: func(cmd *cobra.Command, args []string) {
+        name := args[0]
+        greeting := fmt.Sprintf("Hello, %s!", name)
+        for i := 0; i < times; i++ {
+            if loud {
+                fmt.Println(strings.ToUpper(greeting))
+            } else {
+                fmt.Println(greeting)
+            }
+        }
+    },
+}
+
+var configCmd = &cobra.Command{
+    Use:   "config",
+    Short: "Manage configuration",
+    Run: func(cmd *cobra.Command, args []string) {
+        if key, _ := cmd.Flags().GetString("get"); key != "" {
+            fmt.Println(getConfig(key))
+        }
+        if kv, _ := cmd.Flags().GetString("set"); kv != "" {
+            parts := strings.SplitN(kv, "=", 2)
+            setConfig(parts[0], parts[1])
+        }
+    },
+}
+
+func init() {
+    greetCmd.Flags().BoolVarP(&loud, "loud", "l", false, "Say it loudly")
+    greetCmd.Flags().IntVarP(&times, "times", "t", 1, "Repeat times")
+    
+    configCmd.Flags().String("get", "", "Get config value")
+    configCmd.Flags().String("set", "", "Set config value")
+    
+    rootCmd.AddCommand(greetCmd)
+    rootCmd.AddCommand(configCmd)
+}
+
+func main() {
+    if err := rootCmd.Execute(); err != nil {
+        os.Exit(1)
+    }
+}
+
+// ==================== 错误退出 ====================
+func main() {
+    if err := run(); err != nil {
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(1)
+    }
+}
+
+func run() error {
+    // 业务逻辑
+    if badInput {
+        return fmt.Errorf("invalid input: %s", input)
+    }
+    return nil
+}
+
+// 自定义退出码
+const (
+    ExitSuccess     = 0
+    ExitError       = 1
+    ExitUsageError  = 2
+)
+
+// ==================== 用户交互 ====================
+import "github.com/AlecAivazis/survey/v2"
+
+var name string
+prompt := &survey.Input{
+    Message: "What is your name?",
+}
+survey.AskOne(prompt, &name)
+
+var color string
+survey.AskOne(&survey.Select{
+    Message: "Pick a color:",
+    Options: []string{"Red", "Green", "Blue"},
+}, &color)
+
+var confirmed bool
+survey.AskOne(&survey.Confirm{
+    Message: "Are you sure?",
+}, &confirmed)
+
+// ==================== 输出美化 ====================
+import "github.com/fatih/color"
+
+color.Green("Success!")
+color.Red("Error!")
+color.Yellow("Warning")
+
+// 或使用模板
+red := color.New(color.FgRed, color.Bold)
+red.Println("Bold Red!")
+
+// 进度条
+import "github.com/schollz/progressbar/v3"
+
+bar := progressbar.Default(100)
+for i := 0; i < 100; i++ {
+    bar.Add(1)
+    time.Sleep(10 * time.Millisecond)
+}
+```
+
+### Rust CLI 开发
+
+```rust
+use std::env;
+use std::process;
+
+// ==================== 原生参数读取 ====================
+fn main() {
+    // std::env::args(): ["./program", "arg1", "arg2"]
+    let args: Vec<String> = env::args().collect();
+    println!("{:?}", &args[1..]);
+}
+
+// ==================== clap (推荐) ====================
+use clap::{Parser, Subcommand, Args};
+
+#[derive(Parser)]
+#[command(name = "mycli")]
+#[command(about = "My awesome CLI tool", version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Greet someone
+    Greet(GreetArgs),
+    /// Manage configuration
+    Config(ConfigArgs),
+}
+
+#[derive(Args)]
+struct GreetArgs {
+    /// Name to greet
+    name: String,
+    
+    /// Say it loudly
+    #[arg(short, long)]
+    loud: bool,
+    
+    /// Repeat times
+    #[arg(short, long, default_value_t = 1)]
+    times: u32,
+}
+
+#[derive(Args)]
+struct ConfigArgs {
+    /// Get config value
+    #[arg(long)]
+    get: Option<String>,
+    
+    /// Set config value (KEY=VALUE)
+    #[arg(long)]
+    set: Option<String>,
+}
+
+fn main() {
+    let cli = Cli::parse();
+    
+    match cli.command {
+        Commands::Greet(args) => {
+            let greeting = format!("Hello, {}!", args.name);
+            for _ in 0..args.times {
+                if args.loud {
+                    println!("{}", greeting.to_uppercase());
+                } else {
+                    println!("{}", greeting);
+                }
+            }
+        }
+        Commands::Config(args) => {
+            if let Some(key) = args.get {
+                println!("{}", get_config(&key));
+            }
+            if let Some(kv) = args.set {
+                let parts: Vec<&str> = kv.splitn(2, '=').collect();
+                set_config(parts[0], parts[1]);
+            }
+        }
+    }
+}
+
+// ==================== 错误退出 ====================
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
+    // 业务逻辑
+    if bad_input {
+        return Err("invalid input".into());
+    }
+    Ok(())
+}
+
+// 或使用 anyhow
+use anyhow::{Context, Result, bail};
+
+fn main() -> Result<()> {
+    let config = load_config()
+        .context("Failed to load config")?;
+    
+    if config.invalid {
+        bail!("Invalid configuration");
+    }
+    
+    Ok(())
+}
+
+// 自定义退出码
+fn main() {
+    let code = match run() {
+        Ok(()) => 0,
+        Err(e) if e.is_usage_error() => 2,
+        Err(_) => 1,
+    };
+    process::exit(code);
+}
+
+// ==================== 用户交互 ====================
+use dialoguer::{Input, Select, Confirm};
+
+let name: String = Input::new()
+    .with_prompt("What is your name?")
+    .interact_text()?;
+
+let colors = vec!["Red", "Green", "Blue"];
+let selection = Select::new()
+    .with_prompt("Pick a color")
+    .items(&colors)
+    .interact()?;
+
+let confirmed = Confirm::new()
+    .with_prompt("Are you sure?")
+    .interact()?;
+
+// ==================== 输出美化 ====================
+use colored::*;
+
+println!("{}", "Success!".green());
+println!("{}", "Error!".red().bold());
+println!("{}", "Warning".yellow());
+
+// 进度条
+use indicatif::{ProgressBar, ProgressStyle};
+
+let pb = ProgressBar::new(100);
+pb.set_style(ProgressStyle::default_bar()
+    .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})")?);
+
+for _ in 0..100 {
+    pb.inc(1);
+    std::thread::sleep(Duration::from_millis(10));
+}
+pb.finish_with_message("Done!");
+```
+
+### CLI 开发对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 参数库          │ commander      │ typer/click    │ cobra          │ clap           │
+│ 标准库支持      │ process.argv   │ argparse       │ flag           │ std::env       │
+│ 类型安全        │ ✅             │ ✅ (typer)     │ ✅             │ ✅             │
+│ 子命令          │ ✅             │ ✅             │ ✅             │ ✅             │
+│ 自动补全        │ 插件           │ ✅             │ ✅             │ ✅             │
+│ 交互式          │ inquirer       │ rich           │ survey         │ dialoguer      │
+│ 颜色输出        │ chalk          │ rich           │ color          │ colored        │
+│ 分发            │ npm/pkg        │ pip/PyInstaller│ 单二进制       │ 单二进制       │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 退出码约定
+
+```
+┌──────────┬────────────────────────────────────────┐
+│ 退出码   │ 含义                                   │
+├──────────┼────────────────────────────────────────┤
+│ 0        │ 成功                                   │
+│ 1        │ 一般错误                               │
+│ 2        │ 命令行参数错误                         │
+│ 126      │ 命令不可执行                           │
+│ 127      │ 命令未找到                             │
+│ 128+N    │ 被信号 N 终止 (如 130 = SIGINT)        │
+│ 255      │ 退出码超出范围                         │
+└──────────┴────────────────────────────────────────┘
+```
+
+### CLI 项目结构示例
+
+```
+mycli/
+├── src/
+│   ├── main.ts/py/go/rs    # 入口
+│   ├── commands/           # 子命令
+│   │   ├── greet.ts
+│   │   └── config.ts
+│   ├── utils/              # 工具函数
+│   └── config/             # 配置管理
+├── tests/                  # 测试
+├── package.json / pyproject.toml / go.mod / Cargo.toml
+└── README.md
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
