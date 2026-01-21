@@ -6861,6 +6861,531 @@ impl Rectangle {
 
 ---
 
+## 🔙 函数返回空值处理
+
+### 返回空值模式概览
+
+| 语言 | 空值返回 | 推荐模式 | 特点 |
+|------|----------|----------|------|
+| TypeScript | `null \| undefined` | `T \| null` 或 `T \| undefined` | 需手动检查 |
+| Python | `None` | `Optional[T]` | 需手动检查 |
+| Go | `nil` + `error` | 多返回值 `(T, error)` | 惯用模式 |
+| Rust | 无 null | `Option<T>` / `Result<T, E>` | 编译器强制 |
+
+### TypeScript 函数返回空值
+
+```typescript
+// ==================== 返回 null/undefined ====================
+
+// 可能返回 null
+function findUser(id: number): User | null {
+  const user = db.find(u => u.id === id);
+  return user ?? null;
+}
+
+// 可能返回 undefined
+function getValue(key: string): string | undefined {
+  return cache.get(key);
+}
+
+// ==================== 调用方处理 ====================
+
+// 方式 1: if 检查
+const user = findUser(1);
+if (user !== null) {
+  console.log(user.name);  // 类型收窄为 User
+}
+
+// 方式 2: 可选链
+const name = findUser(1)?.name;
+
+// 方式 3: 空值合并
+const name = findUser(1)?.name ?? "Anonymous";
+
+// 方式 4: 断言 (确定不为空时)
+const user = findUser(1)!;  // 危险！
+
+// ==================== 早期返回模式 ====================
+
+function processUser(id: number): string {
+  const user = findUser(id);
+  if (!user) {
+    return "User not found";
+  }
+  // 此处 user 类型为 User
+  return `Hello, ${user.name}`;
+}
+
+// ==================== 抛出异常 vs 返回 null ====================
+
+// 返回 null (调用方决定如何处理)
+function findUserOrNull(id: number): User | null {
+  return db.find(u => u.id === id) ?? null;
+}
+
+// 抛出异常 (表示程序错误)
+function findUserOrThrow(id: number): User {
+  const user = db.find(u => u.id === id);
+  if (!user) {
+    throw new Error(`User ${id} not found`);
+  }
+  return user;
+}
+
+// ==================== Result 模式 (推荐) ====================
+
+type Result<T, E = Error> = 
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
+function findUser(id: number): Result<User, string> {
+  const user = db.find(u => u.id === id);
+  if (!user) {
+    return { ok: false, error: "User not found" };
+  }
+  return { ok: true, value: user };
+}
+
+// 使用
+const result = findUser(1);
+if (result.ok) {
+  console.log(result.value.name);
+} else {
+  console.error(result.error);
+}
+
+// ==================== neverthrow 库 ====================
+import { ok, err, Result } from 'neverthrow';
+
+function divide(a: number, b: number): Result<number, string> {
+  if (b === 0) return err("Division by zero");
+  return ok(a / b);
+}
+
+divide(10, 2)
+  .map(n => n * 2)
+  .mapErr(e => `Error: ${e}`)
+  .match(
+    value => console.log(value),
+    error => console.error(error)
+  );
+```
+
+### Python 函数返回空值
+
+```python
+from typing import Optional, Union
+from dataclasses import dataclass
+
+# ==================== 返回 None ====================
+
+def find_user(user_id: int) -> Optional[User]:
+    """返回用户或 None"""
+    user = db.get(user_id)
+    return user  # 可能是 None
+
+def get_value(key: str) -> str | None:  # Python 3.10+
+    return cache.get(key)
+
+# ==================== 调用方处理 ====================
+
+# 方式 1: if 检查
+user = find_user(1)
+if user is not None:
+    print(user.name)
+
+# 方式 2: or 默认值 (注意 falsy 值问题)
+name = find_user(1) or default_user
+
+# 方式 3: 条件表达式
+name = user.name if (user := find_user(1)) else "Anonymous"
+
+# 方式 4: getattr 带默认值
+name = getattr(find_user(1), 'name', 'Anonymous')
+
+# ==================== 早期返回模式 ====================
+
+def process_user(user_id: int) -> str:
+    user = find_user(user_id)
+    if user is None:
+        return "User not found"
+    return f"Hello, {user.name}"
+
+# ==================== 抛出异常 vs 返回 None ====================
+
+# 返回 None
+def find_user_or_none(user_id: int) -> Optional[User]:
+    return db.get(user_id)
+
+# 抛出异常
+def find_user_or_raise(user_id: int) -> User:
+    user = db.get(user_id)
+    if user is None:
+        raise ValueError(f"User {user_id} not found")
+    return user
+
+# ==================== Result 模式 ====================
+
+@dataclass
+class Ok[T]:
+    value: T
+
+@dataclass
+class Err[E]:
+    error: E
+
+Result = Ok[T] | Err[E]
+
+def find_user(user_id: int) -> Result[User, str]:
+    user = db.get(user_id)
+    if user is None:
+        return Err("User not found")
+    return Ok(user)
+
+# 使用
+match find_user(1):
+    case Ok(user):
+        print(user.name)
+    case Err(error):
+        print(f"Error: {error}")
+
+# ==================== returns 库 ====================
+# pip install returns
+from returns.result import Result, Success, Failure
+from returns.maybe import Maybe, Some, Nothing
+
+def find_user(user_id: int) -> Result[User, str]:
+    user = db.get(user_id)
+    if user is None:
+        return Failure("User not found")
+    return Success(user)
+
+# Maybe 类型
+def get_name(user_id: int) -> Maybe[str]:
+    user = db.get(user_id)
+    if user is None:
+        return Nothing
+    return Some(user.name)
+```
+
+### Go 函数返回空值
+
+```go
+// ==================== 返回 nil + error (惯用模式) ====================
+
+func FindUser(id int) (*User, error) {
+    user := db.Get(id)
+    if user == nil {
+        return nil, fmt.Errorf("user %d not found", id)
+    }
+    return user, nil
+}
+
+// ==================== 调用方处理 ====================
+
+// 方式 1: 检查 error
+user, err := FindUser(1)
+if err != nil {
+    log.Printf("Error: %v", err)
+    return
+}
+fmt.Println(user.Name)
+
+// 方式 2: 忽略错误 (不推荐)
+user, _ := FindUser(1)
+if user != nil {
+    fmt.Println(user.Name)
+}
+
+// ==================== 多种返回模式 ====================
+
+// 模式 1: 返回 (value, error)
+func GetConfig(key string) (string, error) {
+    value, exists := config[key]
+    if !exists {
+        return "", fmt.Errorf("config %s not found", key)
+    }
+    return value, nil
+}
+
+// 模式 2: 返回 (value, bool)
+func GetCache(key string) (string, bool) {
+    value, ok := cache[key]
+    return value, ok
+}
+
+// 使用
+if value, ok := GetCache("key"); ok {
+    fmt.Println(value)
+}
+
+// 模式 3: 只返回 error
+func SaveUser(user *User) error {
+    if user == nil {
+        return errors.New("user cannot be nil")
+    }
+    return db.Save(user)
+}
+
+// ==================== 哨兵错误 ====================
+
+var (
+    ErrNotFound = errors.New("not found")
+    ErrInvalid  = errors.New("invalid")
+)
+
+func FindUser(id int) (*User, error) {
+    if id <= 0 {
+        return nil, ErrInvalid
+    }
+    user := db.Get(id)
+    if user == nil {
+        return nil, ErrNotFound
+    }
+    return user, nil
+}
+
+// 检查特定错误
+user, err := FindUser(1)
+if errors.Is(err, ErrNotFound) {
+    // 用户不存在
+} else if err != nil {
+    // 其他错误
+}
+
+// ==================== 错误包装 ====================
+
+func GetUserProfile(id int) (*Profile, error) {
+    user, err := FindUser(id)
+    if err != nil {
+        return nil, fmt.Errorf("get user profile: %w", err)
+    }
+    return user.Profile, nil
+}
+
+// ==================== 泛型 Optional (Go 1.18+) ====================
+
+type Optional[T any] struct {
+    value   T
+    present bool
+}
+
+func Some[T any](value T) Optional[T] {
+    return Optional[T]{value: value, present: true}
+}
+
+func None[T any]() Optional[T] {
+    return Optional[T]{}
+}
+
+func (o Optional[T]) IsPresent() bool {
+    return o.present
+}
+
+func (o Optional[T]) Get() (T, bool) {
+    return o.value, o.present
+}
+
+func (o Optional[T]) OrElse(defaultValue T) T {
+    if o.present {
+        return o.value
+    }
+    return defaultValue
+}
+
+// 使用
+func FindUser(id int) Optional[User] {
+    user := db.Get(id)
+    if user == nil {
+        return None[User]()
+    }
+    return Some(*user)
+}
+
+result := FindUser(1)
+if result.IsPresent() {
+    user, _ := result.Get()
+    fmt.Println(user.Name)
+}
+```
+
+### Rust 函数返回空值
+
+```rust
+// ==================== Option<T> ====================
+
+fn find_user(id: u32) -> Option<User> {
+    db.get(&id).cloned()
+}
+
+// ==================== 调用方处理 ====================
+
+// 方式 1: match
+match find_user(1) {
+    Some(user) => println!("{}", user.name),
+    None => println!("User not found"),
+}
+
+// 方式 2: if let
+if let Some(user) = find_user(1) {
+    println!("{}", user.name);
+}
+
+// 方式 3: let else
+let Some(user) = find_user(1) else {
+    println!("User not found");
+    return;
+};
+println!("{}", user.name);
+
+// 方式 4: 方法链
+let name = find_user(1)
+    .map(|u| u.name.clone())
+    .unwrap_or_else(|| "Anonymous".to_string());
+
+// ==================== Option 方法 ====================
+
+let user = find_user(1);
+
+// 获取值
+user.unwrap();              // 有值返回，None 则 panic
+user.expect("No user");     // 带消息的 unwrap
+user.unwrap_or(default);    // 默认值
+user.unwrap_or_else(|| compute_default());  // 惰性默认值
+user.unwrap_or_default();   // 类型默认值
+
+// 转换
+user.map(|u| u.name);       // Option<String>
+user.and_then(|u| u.email); // 链式 Option
+user.filter(|u| u.age > 18);
+user.ok_or("Not found")?;   // 转为 Result
+
+// 检查
+user.is_some();
+user.is_none();
+
+// ==================== Result<T, E> ====================
+
+fn find_user(id: u32) -> Result<User, UserError> {
+    if id == 0 {
+        return Err(UserError::InvalidId);
+    }
+    db.get(&id)
+        .cloned()
+        .ok_or(UserError::NotFound(id))
+}
+
+// ==================== ? 操作符 ====================
+
+fn get_user_email(id: u32) -> Result<String, UserError> {
+    let user = find_user(id)?;  // 错误自动返回
+    let email = user.email.ok_or(UserError::NoEmail)?;
+    Ok(email)
+}
+
+// ==================== 自定义错误 ====================
+
+#[derive(Debug, thiserror::Error)]
+enum UserError {
+    #[error("Invalid user ID")]
+    InvalidId,
+    #[error("User {0} not found")]
+    NotFound(u32),
+    #[error("User has no email")]
+    NoEmail,
+}
+
+// ==================== 组合多个 Option/Result ====================
+
+// Option 组合
+fn get_full_name(id: u32) -> Option<String> {
+    let user = find_user(id)?;
+    let first = user.first_name.as_ref()?;
+    let last = user.last_name.as_ref()?;
+    Some(format!("{} {}", first, last))
+}
+
+// Result 组合
+fn process_user(id: u32) -> Result<String, UserError> {
+    let user = find_user(id)?;
+    let profile = get_profile(user.id)?;
+    let settings = get_settings(user.id)?;
+    Ok(format!("{}: {:?}", profile.name, settings))
+}
+
+// ==================== 转换 Option <-> Result ====================
+
+// Option -> Result
+let result: Result<User, &str> = find_user(1).ok_or("Not found");
+
+// Result -> Option
+let option: Option<User> = find_user_result(1).ok();
+
+// ==================== anyhow (应用代码) ====================
+
+use anyhow::{Context, Result, bail};
+
+fn find_user(id: u32) -> Result<User> {
+    db.get(&id)
+        .cloned()
+        .context(format!("User {} not found", id))
+}
+
+fn process(id: u32) -> Result<()> {
+    let user = find_user(id)?;
+    if user.banned {
+        bail!("User is banned");
+    }
+    Ok(())
+}
+```
+
+### 函数返回空值对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 空值类型        │ null/undefined │ None           │ nil            │ 无             │
+│ 推荐返回类型    │ T | null       │ Optional[T]    │ (*T, error)    │ Option<T>      │
+│ 错误返回        │ throw / Result │ raise / Result │ error          │ Result<T, E>   │
+│ 强制检查        │ ❌ (strictNull)│ ❌             │ ❌             │ ✅             │
+│ 链式处理        │ ?.             │ 有限           │ ❌             │ map/and_then   │
+│ 提前返回        │ if + return    │ if + return    │ if err != nil  │ ?              │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 最佳实践
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        函数返回空值最佳实践                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. 明确语义                                                            │
+│     • 返回 null/None: 表示"没有结果"是正常情况                          │
+│     • 抛出异常/返回 error: 表示"发生了错误"                             │
+│                                                                         │
+│  2. 类型签名要诚实                                                      │
+│     • TypeScript: 使用 strictNullChecks                                │
+│     • Python: 使用 Optional[T] 类型提示                                │
+│     • Go: 始终返回 error 作为第二个值                                  │
+│     • Rust: 使用 Option/Result 而非 panic                              │
+│                                                                         │
+│  3. 调用方处理                                                          │
+│     • 总是检查空值再使用                                               │
+│     • 使用早期返回减少嵌套                                             │
+│     • 提供合理的默认值                                                 │
+│                                                                         │
+│  4. 文档说明                                                            │
+│     • 说明何时返回空值                                                 │
+│     • 说明调用方应如何处理                                             │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 🌐 HTTP 客户端 (Fetch)
 
 ### HTTP 客户端概览
