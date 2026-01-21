@@ -8431,6 +8431,676 @@ static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 ---
 
+## 🔄 并发模型
+
+### 并发模型概览
+
+| 语言 | 并发模型 | 并行能力 | 线程安全 | 适用场景 |
+|------|----------|----------|----------|----------|
+| TypeScript | 事件循环 | Worker | 隔离内存 | I/O 密集 |
+| Python | GIL + 多进程 | 多进程 | GIL 保护 | I/O/多进程 |
+| Go | CSP (Goroutine) | 原生并行 | Channel | 通用 |
+| Rust | 线程 + async | 原生并行 | 类型系统 | 系统级 |
+
+### 并发 vs 并行
+
+```
+并发 (Concurrency): 同时处理多个任务（交替执行）
+并行 (Parallelism): 同时执行多个任务（真正同时）
+
+┌─────────────────────────────────────────────────────────┐
+│ 并发 (单核)                                             │
+│ Task A: ████░░░░████░░░░████                            │
+│ Task B: ░░░░████░░░░████░░░░████                        │
+├─────────────────────────────────────────────────────────┤
+│ 并行 (多核)                                             │
+│ Core 1: ████████████████                               │
+│ Core 2: ████████████████                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### TypeScript 并发模型
+
+```typescript
+// ==================== 事件循环 (Event Loop) ====================
+/*
+┌───────────────────────────────────────┐
+│           Call Stack                  │
+├───────────────────────────────────────┤
+│                                       │
+│  ┌─────────────────────────────────┐  │
+│  │         Event Loop              │  │
+│  │  ┌─────────────────────────┐    │  │
+│  │  │ 1. Microtask Queue      │    │  │
+│  │  │    (Promise, queueMicro)│    │  │
+│  │  ├─────────────────────────┤    │  │
+│  │  │ 2. Macrotask Queue      │    │  │
+│  │  │    (setTimeout, I/O)    │    │  │
+│  │  └─────────────────────────┘    │  │
+│  └─────────────────────────────────┘  │
+│                                       │
+└───────────────────────────────────────┘
+
+执行顺序:
+1. 执行同步代码
+2. 清空微任务队列
+3. 执行一个宏任务
+4. 重复 2-3
+*/
+
+console.log('1');
+setTimeout(() => console.log('2'), 0);
+Promise.resolve().then(() => console.log('3'));
+console.log('4');
+// 输出: 1, 4, 3, 2
+
+// ==================== 单线程非阻塞 ====================
+// 所有 I/O 操作都是非阻塞的
+const response = await fetch(url);  // 不阻塞主线程
+const data = await response.json();
+
+// ==================== Web Workers (浏览器) ====================
+// main.js
+const worker = new Worker('worker.js');
+
+worker.postMessage({ type: 'compute', data: [1, 2, 3] });
+
+worker.onmessage = (e) => {
+  console.log('Result:', e.data);
+};
+
+worker.onerror = (e) => {
+  console.error('Worker error:', e);
+};
+
+// worker.js
+self.onmessage = (e) => {
+  const result = heavyComputation(e.data);
+  self.postMessage(result);
+};
+
+// ==================== Worker Threads (Node.js) ====================
+import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
+
+if (isMainThread) {
+  const worker = new Worker(__filename, {
+    workerData: { nums: [1, 2, 3, 4, 5] }
+  });
+  
+  worker.on('message', (result) => {
+    console.log('Sum:', result);
+  });
+} else {
+  const sum = workerData.nums.reduce((a, b) => a + b, 0);
+  parentPort.postMessage(sum);
+}
+
+// ==================== SharedArrayBuffer (共享内存) ====================
+const sab = new SharedArrayBuffer(1024);
+const arr = new Int32Array(sab);
+
+// Atomics 原子操作
+Atomics.add(arr, 0, 5);
+Atomics.load(arr, 0);
+Atomics.store(arr, 0, 10);
+Atomics.compareExchange(arr, 0, 10, 20);
+
+// 等待/通知
+Atomics.wait(arr, 0, 0);   // 等待值变化
+Atomics.notify(arr, 0, 1); // 唤醒等待者
+```
+
+### Python 并发模型
+
+```python
+import threading
+import multiprocessing
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+# ==================== GIL (Global Interpreter Lock) ====================
+"""
+GIL 特点:
+- 同一时刻只有一个线程执行 Python 字节码
+- I/O 操作会释放 GIL
+- CPU 密集型任务无法利用多核
+
+解决方案:
+- I/O 密集型: 多线程/asyncio
+- CPU 密集型: 多进程
+"""
+
+# ==================== 多线程 (I/O 密集型) ====================
+def fetch_url(url):
+    response = requests.get(url)
+    return response.text
+
+# 方式 1: Thread
+threads = []
+for url in urls:
+    t = threading.Thread(target=fetch_url, args=(url,))
+    t.start()
+    threads.append(t)
+
+for t in threads:
+    t.join()
+
+# 方式 2: ThreadPoolExecutor
+with ThreadPoolExecutor(max_workers=10) as executor:
+    results = list(executor.map(fetch_url, urls))
+    
+    # 或使用 submit
+    futures = [executor.submit(fetch_url, url) for url in urls]
+    results = [f.result() for f in futures]
+
+# ==================== 多进程 (CPU 密集型) ====================
+def cpu_bound(n):
+    return sum(i * i for i in range(n))
+
+# 方式 1: Process
+processes = []
+for i in range(4):
+    p = multiprocessing.Process(target=cpu_bound, args=(10**7,))
+    p.start()
+    processes.append(p)
+
+for p in processes:
+    p.join()
+
+# 方式 2: ProcessPoolExecutor
+with ProcessPoolExecutor(max_workers=4) as executor:
+    results = list(executor.map(cpu_bound, [10**7] * 4))
+
+# 方式 3: Pool
+with multiprocessing.Pool(4) as pool:
+    results = pool.map(cpu_bound, [10**7] * 4)
+
+# ==================== 进程间通信 ====================
+# Queue
+queue = multiprocessing.Queue()
+queue.put(item)
+item = queue.get()
+
+# Pipe
+parent_conn, child_conn = multiprocessing.Pipe()
+parent_conn.send(data)
+data = child_conn.recv()
+
+# 共享内存
+shared_value = multiprocessing.Value('i', 0)
+shared_array = multiprocessing.Array('d', [0.0] * 10)
+
+with shared_value.get_lock():
+    shared_value.value += 1
+
+# Manager (更灵活但更慢)
+manager = multiprocessing.Manager()
+shared_dict = manager.dict()
+shared_list = manager.list()
+
+# ==================== 线程同步 ====================
+lock = threading.Lock()
+rlock = threading.RLock()        # 可重入锁
+semaphore = threading.Semaphore(5)
+event = threading.Event()
+condition = threading.Condition()
+barrier = threading.Barrier(3)
+
+# 使用锁
+with lock:
+    # 临界区
+    shared_resource += 1
+
+# ==================== asyncio (协程) ====================
+async def fetch(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            return await response.text()
+
+async def main():
+    tasks = [fetch(url) for url in urls]
+    results = await asyncio.gather(*tasks)
+
+asyncio.run(main())
+```
+
+### Go 并发模型
+
+```go
+// ==================== CSP 模型 ====================
+/*
+CSP (Communicating Sequential Processes):
+"不要通过共享内存来通信，而要通过通信来共享内存"
+
+Goroutine: 轻量级线程 (~2KB 栈)
+Channel: Goroutine 间通信的管道
+*/
+
+// ==================== Goroutine ====================
+func main() {
+    // 启动 goroutine
+    go func() {
+        fmt.Println("Hello from goroutine")
+    }()
+    
+    // 启动多个
+    for i := 0; i < 100; i++ {
+        go worker(i)
+    }
+    
+    time.Sleep(time.Second)  // 等待 (实际应用用 WaitGroup)
+}
+
+// ==================== Channel ====================
+// 无缓冲 channel (同步)
+ch := make(chan int)
+
+go func() {
+    ch <- 42  // 阻塞直到被接收
+}()
+
+value := <-ch  // 阻塞直到有值
+
+// 有缓冲 channel (异步)
+ch := make(chan int, 100)
+ch <- 1  // 不阻塞 (直到满)
+
+// 关闭 channel
+close(ch)
+
+// 遍历 channel
+for v := range ch {
+    fmt.Println(v)
+}
+
+// 检查是否关闭
+v, ok := <-ch
+if !ok {
+    // channel 已关闭
+}
+
+// ==================== Select ====================
+select {
+case v := <-ch1:
+    fmt.Println("from ch1:", v)
+case v := <-ch2:
+    fmt.Println("from ch2:", v)
+case ch3 <- value:
+    fmt.Println("sent to ch3")
+case <-time.After(time.Second):
+    fmt.Println("timeout")
+default:
+    fmt.Println("no communication")
+}
+
+// ==================== 并发模式 ====================
+
+// Fan-out: 一个输入，多个处理者
+func fanOut(in <-chan int, workers int) []<-chan int {
+    outs := make([]<-chan int, workers)
+    for i := 0; i < workers; i++ {
+        outs[i] = worker(in)
+    }
+    return outs
+}
+
+// Fan-in: 多个输入，合并为一个
+func fanIn(channels ...<-chan int) <-chan int {
+    out := make(chan int)
+    var wg sync.WaitGroup
+    
+    for _, ch := range channels {
+        wg.Add(1)
+        go func(c <-chan int) {
+            defer wg.Done()
+            for v := range c {
+                out <- v
+            }
+        }(ch)
+    }
+    
+    go func() {
+        wg.Wait()
+        close(out)
+    }()
+    
+    return out
+}
+
+// Pipeline: 链式处理
+func pipeline() {
+    nums := gen(1, 2, 3, 4, 5)
+    squared := square(nums)
+    for v := range squared {
+        fmt.Println(v)
+    }
+}
+
+func gen(nums ...int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for _, n := range nums {
+            out <- n
+        }
+    }()
+    return out
+}
+
+func square(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for n := range in {
+            out <- n * n
+        }
+    }()
+    return out
+}
+
+// Worker Pool
+func workerPool(jobs <-chan Job, results chan<- Result, workers int) {
+    var wg sync.WaitGroup
+    for i := 0; i < workers; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for job := range jobs {
+                results <- process(job)
+            }
+        }()
+    }
+    wg.Wait()
+    close(results)
+}
+
+// ==================== 同步原语 ====================
+var (
+    mu      sync.Mutex
+    rwMu    sync.RWMutex
+    once    sync.Once
+    wg      sync.WaitGroup
+    cond    = sync.NewCond(&sync.Mutex{})
+    pool    = sync.Pool{New: func() interface{} { return new(Buffer) }}
+)
+
+// Mutex
+mu.Lock()
+defer mu.Unlock()
+// 临界区
+
+// RWMutex
+rwMu.RLock()   // 读锁
+rwMu.RUnlock()
+rwMu.Lock()    // 写锁
+rwMu.Unlock()
+
+// WaitGroup
+wg.Add(1)
+go func() {
+    defer wg.Done()
+    // 工作
+}()
+wg.Wait()
+
+// Once
+once.Do(func() {
+    // 只执行一次
+})
+
+// ==================== 原子操作 ====================
+import "sync/atomic"
+
+var counter int64
+
+atomic.AddInt64(&counter, 1)
+atomic.LoadInt64(&counter)
+atomic.StoreInt64(&counter, 0)
+atomic.CompareAndSwapInt64(&counter, old, new)
+
+// atomic.Value
+var config atomic.Value
+config.Store(newConfig)
+c := config.Load().(Config)
+```
+
+### Rust 并发模型
+
+```rust
+use std::thread;
+use std::sync::{Arc, Mutex, RwLock, mpsc, Barrier};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// ==================== 线程安全保证 ====================
+/*
+Rust 编译时保证线程安全:
+- Send: 可以安全地在线程间转移所有权
+- Sync: 可以安全地在线程间共享引用
+
+大多数类型自动实现 Send + Sync
+Rc<T> 不是 Send (用 Arc<T> 代替)
+RefCell<T> 不是 Sync (用 Mutex<T> 代替)
+*/
+
+// ==================== 线程 ====================
+// 创建线程
+let handle = thread::spawn(|| {
+    println!("Hello from thread");
+    42
+});
+
+let result = handle.join().unwrap();
+
+// 移动所有权到线程
+let data = vec![1, 2, 3];
+let handle = thread::spawn(move || {
+    println!("{:?}", data);
+});
+
+// 作用域线程 (可借用数据)
+let data = vec![1, 2, 3];
+thread::scope(|s| {
+    s.spawn(|| {
+        println!("{:?}", data);  // 借用 data
+    });
+    s.spawn(|| {
+        println!("len: {}", data.len());
+    });
+});
+// 作用域结束时自动 join
+
+// ==================== 共享状态 ====================
+// Arc + Mutex
+let counter = Arc::new(Mutex::new(0));
+let mut handles = vec![];
+
+for _ in 0..10 {
+    let counter = Arc::clone(&counter);
+    let handle = thread::spawn(move || {
+        let mut num = counter.lock().unwrap();
+        *num += 1;
+    });
+    handles.push(handle);
+}
+
+for handle in handles {
+    handle.join().unwrap();
+}
+
+// RwLock (多读单写)
+let data = Arc::new(RwLock::new(vec![1, 2, 3]));
+
+// 读
+let read_guard = data.read().unwrap();
+
+// 写
+let mut write_guard = data.write().unwrap();
+write_guard.push(4);
+
+// ==================== Channel ====================
+// mpsc: 多生产者单消费者
+let (tx, rx) = mpsc::channel();
+
+thread::spawn(move || {
+    tx.send(42).unwrap();
+});
+
+let received = rx.recv().unwrap();
+
+// 多生产者
+let tx2 = tx.clone();
+
+// 同步 channel (有界)
+let (tx, rx) = mpsc::sync_channel(10);
+
+// 迭代接收
+for received in rx {
+    println!("{}", received);
+}
+
+// ==================== 原子操作 ====================
+let counter = AtomicUsize::new(0);
+
+counter.fetch_add(1, Ordering::SeqCst);
+counter.load(Ordering::SeqCst);
+counter.store(0, Ordering::SeqCst);
+counter.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst);
+
+// Ordering:
+// - Relaxed: 最弱，只保证原子性
+// - Acquire/Release: 同步点
+// - SeqCst: 最强，顺序一致
+
+// ==================== async/await ====================
+use tokio;
+
+#[tokio::main]
+async fn main() {
+    let handle = tokio::spawn(async {
+        // 异步任务
+        42
+    });
+    
+    let result = handle.await.unwrap();
+}
+
+// 并发执行
+async fn concurrent() {
+    let (a, b) = tokio::join!(
+        async_task_1(),
+        async_task_2()
+    );
+}
+
+// 选择第一个完成的
+async fn select_first() {
+    tokio::select! {
+        v = async_task_1() => println!("task 1: {}", v),
+        v = async_task_2() => println!("task 2: {}", v),
+    }
+}
+
+// ==================== 并行迭代 (rayon) ====================
+use rayon::prelude::*;
+
+// 并行 map
+let results: Vec<_> = data.par_iter()
+    .map(|x| expensive_computation(x))
+    .collect();
+
+// 并行 filter
+let filtered: Vec<_> = data.par_iter()
+    .filter(|x| predicate(x))
+    .collect();
+
+// 并行 reduce
+let sum: i32 = data.par_iter().sum();
+
+// 并行排序
+data.par_sort();
+
+// ==================== crossbeam (高级并发) ====================
+use crossbeam::channel;
+use crossbeam::scope;
+
+// 多生产者多消费者 channel
+let (s, r) = channel::unbounded();
+let (s, r) = channel::bounded(10);
+
+// select
+crossbeam::select! {
+    recv(r1) -> msg => println!("r1: {:?}", msg),
+    recv(r2) -> msg => println!("r2: {:?}", msg),
+    send(s, value) -> res => println!("sent"),
+    default => println!("no operation"),
+}
+```
+
+### 并发模型对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 并发模型        │ 事件循环       │ GIL + 多进程   │ CSP            │ 线程 + async   │
+│ 并发单元        │ Promise        │ Thread/Process │ Goroutine      │ Thread/Task    │
+│ 通信方式        │ 消息传递       │ Queue/Pipe     │ Channel        │ Channel        │
+│ 共享状态        │ SharedArray    │ multiprocessing│ Mutex/Channel  │ Arc<Mutex>     │
+│ CPU 并行        │ Worker         │ 多进程         │ 原生           │ 原生           │
+│ 内存开销        │ ~1MB/Worker    │ ~10MB/Process  │ ~2KB/Goroutine │ ~8KB/Thread    │
+│ 数据竞争        │ 隔离           │ GIL 保护       │ 运行时检测     │ 编译时防止     │
+│ 死锁检测        │ ❌             │ ❌             │ ❌             │ 部分编译时     │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 何时使用何种并发
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           选择指南                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  I/O 密集型 (网络/磁盘)                                                 │
+│  ├─ TypeScript: async/await (首选)                                      │
+│  ├─ Python: asyncio 或 多线程                                          │
+│  ├─ Go: Goroutine + Channel                                            │
+│  └─ Rust: tokio async                                                  │
+│                                                                         │
+│  CPU 密集型 (计算)                                                      │
+│  ├─ TypeScript: Worker Threads                                         │
+│  ├─ Python: multiprocessing (必须)                                     │
+│  ├─ Go: Goroutine (自动利用多核)                                       │
+│  └─ Rust: rayon / std::thread                                          │
+│                                                                         │
+│  高并发连接 (10K+)                                                      │
+│  ├─ TypeScript: 事件循环 (单线程高效)                                  │
+│  ├─ Python: asyncio                                                    │
+│  ├─ Go: Goroutine (百万级)                                             │
+│  └─ Rust: tokio (百万级)                                               │
+│                                                                         │
+│  共享状态                                                               │
+│  ├─ TypeScript: 避免 (Worker 隔离)                                     │
+│  ├─ Python: Manager / 共享内存                                         │
+│  ├─ Go: Channel (推荐) / Mutex                                         │
+│  └─ Rust: Arc<Mutex> / Channel                                         │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 常见并发模式
+
+| 模式 | 描述 | 最佳语言 |
+|------|------|----------|
+| 生产者-消费者 | 队列解耦生产和消费 | Go (Channel) |
+| Worker Pool | 固定数量 worker 处理任务 | 全部支持 |
+| Fan-out/Fan-in | 分发任务，汇总结果 | Go |
+| Pipeline | 链式数据处理 | Go, Rust |
+| Pub/Sub | 发布订阅消息 | 全部支持 |
+| Actor | 独立状态的消息处理单元 | Rust (actix) |
+| CSP | 通过通信共享内存 | Go (原生) |
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
