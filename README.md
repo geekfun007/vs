@@ -9101,6 +9101,702 @@ crossbeam::select! {
 
 ---
 
+## ❓ 三元表达式
+
+### 语法概览
+
+| 语言 | 语法 | 特点 |
+|------|------|------|
+| TypeScript | `cond ? a : b` | 标准三元 |
+| Python | `a if cond else b` | 可读性优先 |
+| Go | 无 | 必须用 if |
+| Rust | `if cond { a } else { b }` | if 是表达式 |
+
+### TypeScript 三元表达式
+
+```typescript
+// ==================== 基本语法 ====================
+const result = condition ? "yes" : "no";
+
+const max = a > b ? a : b;
+
+const status = score >= 90 ? "A" 
+             : score >= 80 ? "B" 
+             : score >= 70 ? "C" 
+             : "D";
+
+// ==================== 类型推断 ====================
+const value = condition ? 42 : "hello";  // number | string
+
+// 强制类型
+const num = condition ? 42 : 0;  // number
+
+// ==================== 短路替代 ====================
+// 与运算短路
+const name = user && user.name;
+
+// 或运算短路
+const value = input || "default";
+
+// 空值合并
+const value = input ?? "default";  // 仅 null/undefined
+
+// ==================== 嵌套 (避免过度嵌套) ====================
+// 不推荐
+const result = a ? b ? c : d : e ? f : g;
+
+// 推荐：拆分或使用函数
+function getResult() {
+  if (a) return b ? c : d;
+  return e ? f : g;
+}
+
+// ==================== 常见用法 ====================
+// 条件渲染 (React)
+{isLoggedIn ? <Dashboard /> : <Login />}
+
+// 条件样式
+const className = `btn ${isActive ? "active" : ""}`;
+
+// 条件属性
+const props = {
+  disabled: isLoading ? true : undefined,
+};
+```
+
+### Python 条件表达式
+
+```python
+# ==================== 基本语法 ====================
+result = "yes" if condition else "no"
+
+max_val = a if a > b else b
+
+status = ("A" if score >= 90 else
+          "B" if score >= 80 else
+          "C" if score >= 70 else "D")
+
+# ==================== 与三元不同的顺序 ====================
+# 其他语言: condition ? true_value : false_value
+# Python:   true_value if condition else false_value
+
+# ==================== 短路替代 ====================
+# or 短路 (注意: 空字符串、0、[] 也会触发)
+name = user_name or "Anonymous"
+
+# and 短路
+value = data and data[0]
+
+# ==================== 海象运算符 (Python 3.8+) ====================
+if (n := len(data)) > 10:
+    print(f"List is too long ({n} elements)")
+
+# 在条件表达式中
+result = y if (y := f(x)) else default
+
+# ==================== 常见用法 ====================
+# 列表推导中
+[x if x > 0 else 0 for x in numbers]
+
+# 字典推导中
+{k: v if v else "N/A" for k, v in data.items()}
+
+# 函数默认值
+def greet(name=None):
+    name = name if name is not None else "World"
+    return f"Hello, {name}!"
+
+# 类型注解
+from typing import Optional
+def process(value: Optional[int]) -> int:
+    return value if value is not None else 0
+```
+
+### Go 条件赋值
+
+```go
+// ==================== Go 没有三元运算符 ====================
+// 必须使用 if-else
+
+// 基本形式
+var result string
+if condition {
+    result = "yes"
+} else {
+    result = "no"
+}
+
+// 单行 (不推荐，可读性差)
+var result string; if condition { result = "yes" } else { result = "no" }
+
+// ==================== 泛型辅助函数 (Go 1.18+) ====================
+func Ternary[T any](cond bool, a, b T) T {
+    if cond {
+        return a
+    }
+    return b
+}
+
+result := Ternary(condition, "yes", "no")
+max := Ternary(a > b, a, b)
+
+// 注意：两个分支都会被求值！
+// 不适合有副作用的表达式
+
+// ==================== 惰性求值版本 ====================
+func TernaryLazy[T any](cond bool, a, b func() T) T {
+    if cond {
+        return a()
+    }
+    return b()
+}
+
+result := TernaryLazy(condition, 
+    func() string { return expensiveA() },
+    func() string { return expensiveB() },
+)
+
+// ==================== 常见模式 ====================
+// max/min
+max := a
+if b > a {
+    max = b
+}
+
+// 使用 math 包
+max := math.Max(float64(a), float64(b))
+
+// 条件初始化
+var config Config
+if env == "prod" {
+    config = prodConfig()
+} else {
+    config = devConfig()
+}
+
+// 立即执行函数 (IIFE)
+result := func() string {
+    if condition {
+        return "yes"
+    }
+    return "no"
+}()
+```
+
+### Rust 条件表达式
+
+```rust
+// ==================== if 是表达式 ====================
+let result = if condition { "yes" } else { "no" };
+
+let max = if a > b { a } else { b };
+
+let status = if score >= 90 { "A" }
+             else if score >= 80 { "B" }
+             else if score >= 70 { "C" }
+             else { "D" };
+
+// ==================== 必须有 else (除非返回 ()) ====================
+// 错误：缺少 else
+// let x = if condition { 42 };
+
+// 正确
+let x = if condition { 42 } else { 0 };
+
+// 返回 () 时可省略
+if condition {
+    println!("yes");
+}
+
+// ==================== 类型必须一致 ====================
+// 错误：类型不匹配
+// let x = if condition { 42 } else { "hello" };
+
+// 正确：使用枚举或 trait object
+enum Value {
+    Int(i32),
+    Str(String),
+}
+let x = if condition { Value::Int(42) } else { Value::Str("hello".into()) };
+
+// ==================== match 替代复杂条件 ====================
+let result = match score {
+    90..=100 => "A",
+    80..=89 => "B",
+    70..=79 => "C",
+    _ => "D",
+};
+
+// ==================== Option/Result 的条件方法 ====================
+// unwrap_or
+let value = option.unwrap_or(default);
+
+// unwrap_or_else (惰性)
+let value = option.unwrap_or_else(|| compute_default());
+
+// map_or
+let len = option.map_or(0, |s| s.len());
+
+// ok_or
+let result = option.ok_or("error message")?;
+
+// ==================== 常见用法 ====================
+// 条件赋值
+let config = if is_prod { prod_config() } else { dev_config() };
+
+// 块表达式
+let value = {
+    let temp = compute();
+    if temp > 0 { temp } else { 0 }
+};
+
+// let else (Rust 1.65+)
+let Some(value) = option else {
+    return Err("no value");
+};
+```
+
+---
+
+## 🔀 Switch 语句
+
+### 语法概览
+
+| 语言 | 关键字 | 穿透 | 模式匹配 |
+|------|--------|------|----------|
+| TypeScript | `switch` | 需 break | 有限 |
+| Python | `match` (3.10+) | 无 | 完整 |
+| Go | `switch` | 默认不穿透 | 有限 |
+| Rust | `match` | 无 | 完整 |
+
+### TypeScript switch
+
+```typescript
+// ==================== 基本语法 ====================
+switch (value) {
+  case 1:
+    console.log("one");
+    break;
+  case 2:
+    console.log("two");
+    break;
+  default:
+    console.log("other");
+}
+
+// ==================== 多值匹配 ====================
+switch (day) {
+  case "Saturday":
+  case "Sunday":
+    console.log("Weekend");
+    break;
+  default:
+    console.log("Weekday");
+}
+
+// ==================== 穿透 (fallthrough) ====================
+switch (grade) {
+  case "A":
+    console.log("Excellent");
+    // 没有 break，穿透到下一个
+  case "B":
+    console.log("Good");
+    break;
+}
+
+// ==================== 表达式作为 case ====================
+switch (true) {
+  case score >= 90:
+    grade = "A";
+    break;
+  case score >= 80:
+    grade = "B";
+    break;
+  default:
+    grade = "C";
+}
+
+// ==================== 类型收窄 ====================
+type Shape = 
+  | { kind: "circle"; radius: number }
+  | { kind: "rectangle"; width: number; height: number };
+
+function area(shape: Shape): number {
+  switch (shape.kind) {
+    case "circle":
+      return Math.PI * shape.radius ** 2;
+    case "rectangle":
+      return shape.width * shape.height;
+  }
+}
+
+// ==================== 穷尽检查 ====================
+function exhaustiveCheck(value: never): never {
+  throw new Error(`Unhandled value: ${value}`);
+}
+
+switch (shape.kind) {
+  case "circle":
+    // ...
+    break;
+  case "rectangle":
+    // ...
+    break;
+  default:
+    exhaustiveCheck(shape);  // 如果漏掉 case，编译错误
+}
+
+// ==================== 对象映射替代 ====================
+const handlers: Record<string, () => void> = {
+  start: () => console.log("Starting"),
+  stop: () => console.log("Stopping"),
+  pause: () => console.log("Pausing"),
+};
+
+handlers[action]?.() ?? console.log("Unknown action");
+```
+
+### Python match (3.10+)
+
+```python
+# ==================== 基本语法 ====================
+match value:
+    case 1:
+        print("one")
+    case 2:
+        print("two")
+    case _:
+        print("other")
+
+# ==================== 多值匹配 ====================
+match day:
+    case "Saturday" | "Sunday":
+        print("Weekend")
+    case _:
+        print("Weekday")
+
+# ==================== 模式匹配 ====================
+# 序列解构
+match point:
+    case (0, 0):
+        print("Origin")
+    case (0, y):
+        print(f"On Y axis at {y}")
+    case (x, 0):
+        print(f"On X axis at {x}")
+    case (x, y):
+        print(f"Point at ({x}, {y})")
+
+# 字典解构
+match config:
+    case {"debug": True, "verbose": True}:
+        print("Debug verbose mode")
+    case {"debug": True}:
+        print("Debug mode")
+    case _:
+        print("Normal mode")
+
+# ==================== 类匹配 ====================
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+@dataclass
+class Circle:
+    center: Point
+    radius: float
+
+match shape:
+    case Circle(center=Point(0, 0), radius=r):
+        print(f"Circle at origin with radius {r}")
+    case Circle(center=c, radius=r):
+        print(f"Circle at {c} with radius {r}")
+
+# ==================== 守卫条件 (Guard) ====================
+match point:
+    case (x, y) if x == y:
+        print(f"On diagonal at {x}")
+    case (x, y) if x > y:
+        print("Above diagonal")
+    case (x, y):
+        print("Below diagonal")
+
+# ==================== 捕获匹配值 ====================
+match command:
+    case ["quit"]:
+        quit()
+    case ["load", filename]:
+        load(filename)
+    case ["save", filename]:
+        save(filename)
+    case ["move", *coords] if len(coords) == 2:
+        move(*coords)
+    case _:
+        print("Unknown command")
+
+# ==================== 类型匹配 ====================
+match value:
+    case int():
+        print("Integer")
+    case str():
+        print("String")
+    case list():
+        print("List")
+    case _:
+        print("Other")
+
+# ==================== 旧版 Python (< 3.10) ====================
+# 使用 if-elif-else 或字典映射
+handlers = {
+    "start": lambda: print("Starting"),
+    "stop": lambda: print("Stopping"),
+}
+handlers.get(action, lambda: print("Unknown"))()
+```
+
+### Go switch
+
+```go
+// ==================== 基本语法 ====================
+switch value {
+case 1:
+    fmt.Println("one")
+case 2:
+    fmt.Println("two")
+default:
+    fmt.Println("other")
+}
+
+// 无需 break，默认不穿透
+
+// ==================== 多值匹配 ====================
+switch day {
+case "Saturday", "Sunday":
+    fmt.Println("Weekend")
+default:
+    fmt.Println("Weekday")
+}
+
+// ==================== 显式穿透 (fallthrough) ====================
+switch value {
+case 1:
+    fmt.Println("one")
+    fallthrough  // 继续执行下一个 case
+case 2:
+    fmt.Println("one or two")
+}
+
+// ==================== 无条件 switch ====================
+switch {
+case score >= 90:
+    grade = "A"
+case score >= 80:
+    grade = "B"
+case score >= 70:
+    grade = "C"
+default:
+    grade = "D"
+}
+
+// ==================== 初始化语句 ====================
+switch os := runtime.GOOS; os {
+case "darwin":
+    fmt.Println("macOS")
+case "linux":
+    fmt.Println("Linux")
+default:
+    fmt.Printf("%s\n", os)
+}
+
+// ==================== 类型 switch ====================
+func describe(i interface{}) {
+    switch v := i.(type) {
+    case int:
+        fmt.Printf("Integer: %d\n", v)
+    case string:
+        fmt.Printf("String: %s\n", v)
+    case bool:
+        fmt.Printf("Boolean: %t\n", v)
+    default:
+        fmt.Printf("Unknown type: %T\n", v)
+    }
+}
+
+// ==================== 泛型约束 (Go 1.18+) ====================
+type Number interface {
+    int | int64 | float64
+}
+
+func sum[T Number](a, b T) T {
+    return a + b
+}
+
+// ==================== 标签跳转 ====================
+OuterLoop:
+    for i := 0; i < 10; i++ {
+        switch i {
+        case 5:
+            break OuterLoop  // 跳出外层循环
+        }
+    }
+```
+
+### Rust match
+
+```rust
+// ==================== 基本语法 ====================
+match value {
+    1 => println!("one"),
+    2 => println!("two"),
+    _ => println!("other"),
+}
+
+// match 是表达式
+let result = match value {
+    1 => "one",
+    2 => "two",
+    _ => "other",
+};
+
+// ==================== 多值匹配 ====================
+match day {
+    "Saturday" | "Sunday" => println!("Weekend"),
+    _ => println!("Weekday"),
+}
+
+// ==================== 范围匹配 ====================
+match score {
+    90..=100 => "A",
+    80..=89 => "B",
+    70..=79 => "C",
+    0..=69 => "D",
+    _ => "Invalid",
+}
+
+match c {
+    'a'..='z' => println!("lowercase"),
+    'A'..='Z' => println!("uppercase"),
+    '0'..='9' => println!("digit"),
+    _ => println!("other"),
+}
+
+// ==================== 解构匹配 ====================
+// 元组
+match point {
+    (0, 0) => println!("Origin"),
+    (0, y) => println!("On Y axis at {}", y),
+    (x, 0) => println!("On X axis at {}", x),
+    (x, y) => println!("Point at ({}, {})", x, y),
+}
+
+// 结构体
+struct Point { x: i32, y: i32 }
+
+match point {
+    Point { x: 0, y: 0 } => println!("Origin"),
+    Point { x, y: 0 } => println!("On X axis at {}", x),
+    Point { x: 0, y } => println!("On Y axis at {}", y),
+    Point { x, y } => println!("Point at ({}, {})", x, y),
+}
+
+// 枚举
+enum Message {
+    Quit,
+    Move { x: i32, y: i32 },
+    Write(String),
+    ChangeColor(i32, i32, i32),
+}
+
+match msg {
+    Message::Quit => println!("Quit"),
+    Message::Move { x, y } => println!("Move to ({}, {})", x, y),
+    Message::Write(text) => println!("Write: {}", text),
+    Message::ChangeColor(r, g, b) => println!("Color: {}, {}, {}", r, g, b),
+}
+
+// ==================== 守卫条件 (Guard) ====================
+match num {
+    x if x < 0 => println!("Negative"),
+    x if x > 0 => println!("Positive"),
+    _ => println!("Zero"),
+}
+
+match point {
+    (x, y) if x == y => println!("On diagonal"),
+    (x, y) if x > y => println!("Above diagonal"),
+    (x, y) => println!("Below diagonal"),
+}
+
+// ==================== 绑定 (@) ====================
+match age {
+    n @ 0..=12 => println!("Child aged {}", n),
+    n @ 13..=19 => println!("Teen aged {}", n),
+    n => println!("Adult aged {}", n),
+}
+
+// ==================== Option/Result ====================
+match option {
+    Some(value) => println!("Got: {}", value),
+    None => println!("Nothing"),
+}
+
+match result {
+    Ok(value) => println!("Success: {}", value),
+    Err(e) => println!("Error: {}", e),
+}
+
+// ==================== 穷尽性检查 ====================
+// 必须处理所有可能的情况，否则编译错误
+enum Color { Red, Green, Blue }
+
+match color {
+    Color::Red => println!("Red"),
+    Color::Green => println!("Green"),
+    // 编译错误：未处理 Color::Blue
+}
+
+// ==================== if let / while let ====================
+// 简化单分支 match
+if let Some(value) = option {
+    println!("Got: {}", value);
+}
+
+while let Some(item) = iter.next() {
+    println!("{}", item);
+}
+
+// let else
+let Some(value) = option else {
+    return Err("No value");
+};
+
+// ==================== matches! 宏 ====================
+let is_letter = matches!(c, 'a'..='z' | 'A'..='Z');
+let is_some_and_positive = matches!(option, Some(x) if x > 0);
+```
+
+### Switch/Match 对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 特性            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 关键字          │ switch         │ match          │ switch         │ match          │
+│ 表达式          │ ❌ (语句)      │ ❌ (语句)      │ ❌ (语句)      │ ✅             │
+│ 穿透            │ 默认穿透       │ 无             │ 需 fallthrough │ 无             │
+│ 模式匹配        │ 有限           │ 完整           │ 类型 switch    │ 完整           │
+│ 守卫条件        │ ❌             │ if             │ ❌             │ if             │
+│ 穷尽检查        │ 手动           │ ❌             │ ❌             │ ✅ 编译时      │
+│ 解构            │ ❌             │ ✅             │ ❌             │ ✅             │
+│ 范围匹配        │ ❌             │ ❌             │ ❌             │ ✅             │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
