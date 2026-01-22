@@ -319,6 +319,823 @@ async fn main() {
 
 ---
 
+## 📋 List / Tuple / Set 集合类型
+
+### 集合类型概览
+
+| 类型 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 动态数组 | `Array<T>` | `list` | `[]T` (slice) | `Vec<T>` |
+| 固定数组 | `readonly T[]` | `tuple` | `[N]T` | `[T; N]` |
+| 集合 | `Set<T>` | `set` | `map[T]struct{}` | `HashSet<T>` |
+
+### TypeScript 数组操作
+
+```typescript
+// ==================== 创建 ====================
+const arr: number[] = [1, 2, 3];
+const arr2: Array<number> = [1, 2, 3];
+const empty: string[] = [];
+const filled = new Array(5).fill(0);  // [0, 0, 0, 0, 0]
+const range = Array.from({ length: 5 }, (_, i) => i);  // [0, 1, 2, 3, 4]
+
+// ==================== 增 (Create) ====================
+arr.push(4);              // 末尾添加 [1,2,3,4]
+arr.unshift(0);           // 开头添加 [0,1,2,3,4]
+arr.splice(2, 0, 1.5);    // 指定位置插入
+const newArr = [...arr, 5];  // 不可变添加
+
+// ==================== 删 (Delete) ====================
+arr.pop();                // 删除末尾
+arr.shift();              // 删除开头
+arr.splice(1, 1);         // 删除索引 1 的元素
+const filtered = arr.filter(x => x !== 2);  // 不可变删除
+
+// 删除多个元素
+const toRemove = new Set([1, 3, 5]);
+const result = arr.filter(x => !toRemove.has(x));
+
+// 按索引删除多个
+const indicesToRemove = [0, 2, 4];
+const result2 = arr.filter((_, i) => !indicesToRemove.includes(i));
+
+// 清空
+arr.length = 0;
+arr.splice(0, arr.length);
+
+// ==================== 改 (Update) ====================
+arr[0] = 10;              // 直接修改
+arr.splice(1, 1, 20);     // 替换
+arr.fill(0, 1, 3);        // 填充索引 1-2
+
+// ==================== 查 (Read) ====================
+arr[0];                   // 索引访问
+arr.at(-1);               // 负索引 (ES2022)
+arr.indexOf(2);           // 查找索引
+arr.includes(2);          // 是否包含
+arr.find(x => x > 2);     // 查找元素
+arr.findIndex(x => x > 2);// 查找索引
+arr.slice(1, 3);          // 切片 [1, 3)
+
+// ==================== IndexError 处理 ====================
+// JavaScript 返回 undefined，不抛异常
+arr[100];                 // undefined
+arr[-1];                  // undefined (用 at(-1))
+
+// 安全访问
+function safeGet<T>(arr: T[], index: number): T | undefined {
+  if (index < 0) index = arr.length + index;
+  if (index < 0 || index >= arr.length) return undefined;
+  return arr[index];
+}
+
+// 断言存在
+function assertGet<T>(arr: T[], index: number): T {
+  if (index < 0 || index >= arr.length) {
+    throw new RangeError(`Index ${index} out of bounds`);
+  }
+  return arr[index];
+}
+
+// ==================== Set ====================
+const set = new Set<number>([1, 2, 3]);
+set.add(4);
+set.delete(2);
+set.has(1);               // true
+set.size;                 // 3
+set.clear();
+
+// Set 操作
+const a = new Set([1, 2, 3]);
+const b = new Set([2, 3, 4]);
+const union = new Set([...a, ...b]);           // 并集
+const intersection = new Set([...a].filter(x => b.has(x)));  // 交集
+const difference = new Set([...a].filter(x => !b.has(x)));   // 差集
+
+// ==================== Tuple (只读数组) ====================
+const tuple: readonly [string, number] = ["hello", 42];
+// tuple[0] = "world";  // 错误：只读
+const [str, num] = tuple;  // 解构
+```
+
+### Python 列表操作
+
+```python
+# ==================== 创建 ====================
+arr = [1, 2, 3]
+empty = []
+filled = [0] * 5          # [0, 0, 0, 0, 0]
+range_list = list(range(5))  # [0, 1, 2, 3, 4]
+comprehension = [x * 2 for x in range(5)]
+
+# ==================== 增 (Create) ====================
+arr.append(4)             # 末尾添加
+arr.insert(0, 0)          # 指定位置插入
+arr.extend([5, 6])        # 扩展多个
+arr += [7, 8]             # 合并
+new_arr = [*arr, 9]       # 不可变添加
+
+# ==================== 删 (Delete) ====================
+arr.pop()                 # 删除末尾并返回
+arr.pop(0)                # 删除指定索引
+arr.remove(2)             # 删除第一个值为 2 的元素
+del arr[1]                # 删除索引 1
+del arr[1:3]              # 删除切片
+
+# 删除多个元素 (按值)
+to_remove = {1, 3, 5}
+arr = [x for x in arr if x not in to_remove]
+
+# 删除多个元素 (按索引)
+indices = {0, 2, 4}
+arr = [x for i, x in enumerate(arr) if i not in indices]
+
+# 清空
+arr.clear()
+arr = []
+del arr[:]
+
+# ==================== 改 (Update) ====================
+arr[0] = 10               # 直接修改
+arr[1:3] = [20, 30]       # 切片替换
+
+# ==================== 查 (Read) ====================
+arr[0]                    # 索引访问
+arr[-1]                   # 负索引 (最后一个)
+arr[1:3]                  # 切片 [1, 3)
+arr[::2]                  # 步长切片
+arr[::-1]                 # 反转
+arr.index(2)              # 查找索引 (不存在抛 ValueError)
+2 in arr                  # 是否包含
+arr.count(2)              # 计数
+
+# ==================== IndexError 处理 ====================
+try:
+    value = arr[100]
+except IndexError:
+    print("索引越界")
+
+# 安全访问
+def safe_get(arr, index, default=None):
+    try:
+        return arr[index]
+    except IndexError:
+        return default
+
+# 或使用切片 (不抛异常)
+arr[100:101]              # [] (空列表)
+
+# ==================== set ====================
+s = {1, 2, 3}
+s.add(4)
+s.remove(2)               # 不存在抛 KeyError
+s.discard(2)              # 不存在不抛异常
+s.pop()                   # 删除任意元素
+2 in s                    # True
+len(s)                    # 3
+s.clear()
+
+# 集合运算
+a = {1, 2, 3}
+b = {2, 3, 4}
+a | b                     # 并集 {1, 2, 3, 4}
+a & b                     # 交集 {2, 3}
+a - b                     # 差集 {1}
+a ^ b                     # 对称差集 {1, 4}
+
+# ==================== tuple (不可变) ====================
+t = (1, 2, 3)
+t = 1, 2, 3               # 括号可省略
+single = (1,)             # 单元素元组
+a, b, c = t               # 解构
+a, *rest = t              # 剩余元素
+```
+
+### Go 切片操作
+
+```go
+// ==================== 创建 ====================
+arr := []int{1, 2, 3}
+empty := []string{}
+filled := make([]int, 5)       // [0, 0, 0, 0, 0]
+withCap := make([]int, 0, 10)  // 长度 0，容量 10
+
+// ==================== 增 (Create) ====================
+arr = append(arr, 4)           // 末尾添加
+arr = append(arr, 5, 6, 7)     // 添加多个
+arr = append([]int{0}, arr...) // 开头添加
+// 中间插入
+arr = append(arr[:2], append([]int{10}, arr[2:]...)...)
+
+// ==================== 删 (Delete) ====================
+arr = arr[:len(arr)-1]         // 删除末尾
+arr = arr[1:]                  // 删除开头
+// 删除索引 i
+arr = append(arr[:i], arr[i+1:]...)
+
+// 删除多个元素 (按值)
+toRemove := map[int]bool{1: true, 3: true, 5: true}
+result := arr[:0]
+for _, x := range arr {
+    if !toRemove[x] {
+        result = append(result, x)
+    }
+}
+
+// 删除多个元素 (按索引)
+indices := map[int]bool{0: true, 2: true, 4: true}
+result := arr[:0]
+for i, x := range arr {
+    if !indices[i] {
+        result = append(result, x)
+    }
+}
+
+// 清空 (保留容量)
+arr = arr[:0]
+
+// ==================== 改 (Update) ====================
+arr[0] = 10                    // 直接修改
+copy(arr[1:], []int{20, 30})   // 批量替换
+
+// ==================== 查 (Read) ====================
+arr[0]                         // 索引访问
+arr[1:3]                       // 切片 [1, 3)
+arr[1:]                        // 从索引 1 到末尾
+arr[:3]                        // 从开头到索引 3
+
+// 查找元素
+func indexOf[T comparable](slice []T, target T) int {
+    for i, v := range slice {
+        if v == target {
+            return i
+        }
+    }
+    return -1
+}
+
+func contains[T comparable](slice []T, target T) bool {
+    return indexOf(slice, target) >= 0
+}
+
+// ==================== IndexError 处理 ====================
+// Go 会 panic
+defer func() {
+    if r := recover(); r != nil {
+        fmt.Println("索引越界:", r)
+    }
+}()
+_ = arr[100]  // panic: index out of range
+
+// 安全访问
+func safeGet[T any](slice []T, index int) (T, bool) {
+    if index < 0 || index >= len(slice) {
+        var zero T
+        return zero, false
+    }
+    return slice[index], true
+}
+
+// ==================== 固定数组 ====================
+var fixedArr [5]int           // [0, 0, 0, 0, 0]
+fixedArr := [5]int{1, 2, 3}   // [1, 2, 3, 0, 0]
+fixedArr := [...]int{1, 2, 3} // 自动推断长度
+
+// ==================== Set (用 map 模拟) ====================
+set := make(map[int]struct{})
+set[1] = struct{}{}           // 添加
+delete(set, 1)                // 删除
+_, exists := set[1]           // 检查存在
+```
+
+### Rust 向量操作
+
+```rust
+// ==================== 创建 ====================
+let arr: Vec<i32> = vec![1, 2, 3];
+let empty: Vec<String> = Vec::new();
+let filled = vec![0; 5];       // [0, 0, 0, 0, 0]
+let range: Vec<i32> = (0..5).collect();
+
+// ==================== 增 (Create) ====================
+let mut arr = vec![1, 2, 3];
+arr.push(4);                   // 末尾添加
+arr.insert(0, 0);              // 指定位置插入
+arr.extend([5, 6]);            // 扩展多个
+arr.append(&mut other_vec);    // 合并
+
+// ==================== 删 (Delete) ====================
+arr.pop();                     // 删除末尾并返回 Option
+arr.remove(0);                 // 删除指定索引 (会 panic)
+arr.swap_remove(0);            // 删除并用最后一个填充 (O(1))
+arr.retain(|x| *x != 2);       // 保留满足条件的
+
+// 删除多个元素 (按值)
+let to_remove: HashSet<i32> = [1, 3, 5].into_iter().collect();
+arr.retain(|x| !to_remove.contains(x));
+
+// 删除多个元素 (按索引，从后往前删)
+let mut indices = vec![0, 2, 4];
+indices.sort_by(|a, b| b.cmp(a));  // 倒序
+for i in indices {
+    arr.remove(i);
+}
+
+// 清空
+arr.clear();
+
+// ==================== 改 (Update) ====================
+arr[0] = 10;                   // 直接修改
+if let Some(elem) = arr.get_mut(0) {
+    *elem = 20;
+}
+
+// ==================== 查 (Read) ====================
+arr[0];                        // 索引访问 (可能 panic)
+arr.get(0);                    // Option<&T>
+arr.first();                   // 第一个 Option<&T>
+arr.last();                    // 最后一个 Option<&T>
+&arr[1..3];                    // 切片 [1, 3)
+arr.iter().position(|x| *x == 2);  // 查找索引
+arr.contains(&2);              // 是否包含
+arr.iter().find(|x| **x > 2);  // 查找元素
+
+// ==================== IndexError 处理 ====================
+// 方式 1: get 返回 Option
+match arr.get(100) {
+    Some(value) => println!("{}", value),
+    None => println!("索引越界"),
+}
+
+// 方式 2: get_or (不存在返回默认)
+let value = arr.get(100).unwrap_or(&0);
+
+// 方式 3: 直接索引 (会 panic)
+// arr[100];  // panic: index out of bounds
+
+// ==================== HashSet ====================
+use std::collections::HashSet;
+
+let mut set: HashSet<i32> = HashSet::from([1, 2, 3]);
+set.insert(4);
+set.remove(&2);
+set.contains(&1);             // true
+set.len();                    // 3
+
+// 集合运算
+let a: HashSet<i32> = [1, 2, 3].into_iter().collect();
+let b: HashSet<i32> = [2, 3, 4].into_iter().collect();
+let union: HashSet<_> = a.union(&b).collect();
+let intersection: HashSet<_> = a.intersection(&b).collect();
+let difference: HashSet<_> = a.difference(&b).collect();
+
+// ==================== 固定数组 / Tuple ====================
+let fixed: [i32; 5] = [1, 2, 3, 4, 5];
+let filled: [i32; 5] = [0; 5];
+let tuple: (i32, String, bool) = (1, String::from("hello"), true);
+let (a, b, c) = tuple;        // 解构
+```
+
+---
+
+## 🗺️ Map / Struct / Interface
+
+### 映射类型概览
+
+| 类型 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 字典/映射 | `Map<K,V>` / `{}` | `dict` | `map[K]V` | `HashMap<K,V>` |
+| 结构体 | `interface` / `class` | `class` / `dataclass` | `struct` | `struct` |
+| 接口 | `interface` | `Protocol` | `interface` | `trait` |
+
+### TypeScript Map/Object 操作
+
+```typescript
+// ==================== Object ====================
+const obj: Record<string, number> = { a: 1, b: 2 };
+
+// 增
+obj.c = 3;
+obj["d"] = 4;
+
+// 删
+delete obj.a;
+const { b, ...rest } = obj;  // 不可变删除
+
+// 改
+obj.b = 20;
+
+// 查
+obj.a;                     // 可能 undefined
+obj["a"];
+"a" in obj;                // 检查 key
+Object.keys(obj);
+Object.values(obj);
+Object.entries(obj);
+
+// ==================== Map (推荐) ====================
+const map = new Map<string, number>();
+
+// 增
+map.set("a", 1);
+map.set("b", 2);
+
+// 删
+map.delete("a");
+map.clear();
+
+// 改
+map.set("b", 20);
+
+// 查
+map.get("a");              // undefined if not exists
+map.has("a");              // boolean
+map.size;
+map.keys();
+map.values();
+map.entries();
+
+// ==================== KeyError 处理 ====================
+// Map.get 返回 undefined，不抛异常
+const value = map.get("nonexistent");  // undefined
+
+// 带默认值
+function getOrDefault<K, V>(map: Map<K, V>, key: K, defaultValue: V): V {
+  return map.has(key) ? map.get(key)! : defaultValue;
+}
+
+// 带初始化
+function getOrSet<K, V>(map: Map<K, V>, key: K, factory: () => V): V {
+  if (!map.has(key)) {
+    map.set(key, factory());
+  }
+  return map.get(key)!;
+}
+
+// ==================== 删除多个 key ====================
+const keysToRemove = ["a", "c", "e"];
+keysToRemove.forEach(key => map.delete(key));
+
+// 不可变删除
+const newMap = new Map([...map].filter(([k]) => !keysToRemove.includes(k)));
+
+// ==================== interface / class ====================
+interface User {
+  id: number;
+  name: string;
+  email?: string;
+}
+
+class UserImpl implements User {
+  constructor(
+    public id: number,
+    public name: string,
+    public email?: string
+  ) {}
+}
+
+// 类型守卫
+function isUser(obj: any): obj is User {
+  return typeof obj.id === "number" && typeof obj.name === "string";
+}
+```
+
+### Python 字典操作
+
+```python
+# ==================== dict ====================
+d = {"a": 1, "b": 2}
+d = dict(a=1, b=2)
+
+# 增
+d["c"] = 3
+d.update({"d": 4, "e": 5})
+d |= {"f": 6}              # Python 3.9+
+
+# 删
+del d["a"]
+d.pop("b")                 # 删除并返回
+d.pop("x", None)           # 不存在返回默认值
+d.popitem()                # 删除最后插入的
+
+# 删除多个 key
+keys_to_remove = ["a", "c", "e"]
+for key in keys_to_remove:
+    d.pop(key, None)
+
+# 不可变删除
+new_d = {k: v for k, v in d.items() if k not in keys_to_remove}
+
+# 清空
+d.clear()
+
+# 改
+d["a"] = 10
+
+# 查
+d["a"]                     # KeyError if not exists
+d.get("a")                 # None if not exists
+d.get("a", 0)              # 默认值
+"a" in d                   # 检查 key
+d.keys()
+d.values()
+d.items()
+
+# ==================== KeyError 处理 ====================
+try:
+    value = d["nonexistent"]
+except KeyError:
+    print("Key 不存在")
+
+# 使用 get
+value = d.get("nonexistent", "default")
+
+# setdefault (获取或设置默认值)
+value = d.setdefault("key", [])
+value.append(1)            # d["key"] 现在是 [1]
+
+# defaultdict
+from collections import defaultdict
+dd = defaultdict(list)
+dd["key"].append(1)        # 自动初始化为 []
+
+# ==================== class / dataclass ====================
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class User:
+    id: int
+    name: str
+    email: Optional[str] = None
+
+user = User(id=1, name="John")
+user.name                  # 访问属性
+
+# 普通 class
+class User:
+    def __init__(self, id: int, name: str):
+        self.id = id
+        self.name = name
+
+# Protocol (结构化类型)
+from typing import Protocol
+
+class HasName(Protocol):
+    name: str
+
+def greet(obj: HasName) -> str:
+    return f"Hello, {obj.name}"
+```
+
+### Go Map/Struct 操作
+
+```go
+// ==================== map ====================
+m := map[string]int{"a": 1, "b": 2}
+m := make(map[string]int)
+
+// 增
+m["c"] = 3
+
+// 删
+delete(m, "a")
+
+// 删除多个 key
+keysToRemove := []string{"a", "c", "e"}
+for _, key := range keysToRemove {
+    delete(m, key)
+}
+
+// 清空 (重新创建)
+m = make(map[string]int)
+
+// 改
+m["a"] = 10
+
+// 查
+value := m["a"]            // 不存在返回零值
+value, ok := m["a"]        // comma ok 模式
+if ok {
+    fmt.Println(value)
+}
+
+// 遍历
+for key, value := range m {
+    fmt.Println(key, value)
+}
+
+// ==================== KeyError 处理 ====================
+// Go 不抛异常，返回零值
+value := m["nonexistent"]  // 0 (int 的零值)
+
+// 检查是否存在
+value, exists := m["nonexistent"]
+if !exists {
+    fmt.Println("Key 不存在")
+}
+
+// 带默认值
+func getOrDefault[K comparable, V any](m map[K]V, key K, defaultValue V) V {
+    if value, ok := m[key]; ok {
+        return value
+    }
+    return defaultValue
+}
+
+// ==================== struct ====================
+type User struct {
+    ID    int
+    Name  string
+    Email string  // 可选用指针 *string
+}
+
+// 创建
+user := User{ID: 1, Name: "John"}
+user := User{
+    ID:   1,
+    Name: "John",
+}
+userPtr := &User{ID: 1, Name: "John"}
+
+// 访问
+user.Name
+userPtr.Name               // 自动解引用
+
+// 修改
+user.Name = "Jane"
+
+// ==================== interface ====================
+type HasName interface {
+    GetName() string
+}
+
+func (u User) GetName() string {
+    return u.Name
+}
+
+func greet(obj HasName) string {
+    return "Hello, " + obj.GetName()
+}
+
+// 类型断言
+if user, ok := obj.(User); ok {
+    fmt.Println(user.ID)
+}
+
+// 类型 switch
+switch v := obj.(type) {
+case User:
+    fmt.Println(v.ID)
+case *User:
+    fmt.Println(v.ID)
+default:
+    fmt.Println("Unknown type")
+}
+```
+
+### Rust HashMap/Struct 操作
+
+```rust
+use std::collections::HashMap;
+
+// ==================== HashMap ====================
+let mut map: HashMap<String, i32> = HashMap::new();
+let map: HashMap<_, _> = [("a", 1), ("b", 2)].into_iter().collect();
+
+// 增
+map.insert("c".to_string(), 3);
+
+// 删
+map.remove("a");
+
+// 删除多个 key
+let keys_to_remove = vec!["a", "c", "e"];
+for key in keys_to_remove {
+    map.remove(key);
+}
+// 或使用 retain
+map.retain(|k, _| !keys_to_remove.contains(&k.as_str()));
+
+// 清空
+map.clear();
+
+// 改
+map.insert("a".to_string(), 10);
+if let Some(value) = map.get_mut("a") {
+    *value = 20;
+}
+
+// 查
+map.get("a");              // Option<&V>
+map.get("a").copied();     // Option<V> (if V: Copy)
+map.contains_key("a");
+map.keys();
+map.values();
+map.iter();
+
+// ==================== KeyError 处理 ====================
+// get 返回 Option
+match map.get("nonexistent") {
+    Some(value) => println!("{}", value),
+    None => println!("Key 不存在"),
+}
+
+// unwrap_or
+let value = map.get("nonexistent").unwrap_or(&0);
+
+// entry API (获取或插入)
+let value = map.entry("key".to_string()).or_insert(0);
+*value += 1;
+
+// entry 带闭包
+map.entry("key".to_string()).or_insert_with(|| expensive_computation());
+
+// ==================== struct ====================
+struct User {
+    id: u32,
+    name: String,
+    email: Option<String>,
+}
+
+// 创建
+let user = User {
+    id: 1,
+    name: String::from("John"),
+    email: None,
+};
+
+// 使用 Default
+#[derive(Default)]
+struct User {
+    id: u32,
+    name: String,
+    email: Option<String>,
+}
+
+let user = User {
+    name: String::from("John"),
+    ..Default::default()
+};
+
+// 访问
+user.name;
+
+// 修改 (需要 mut)
+let mut user = User { /* ... */ };
+user.name = String::from("Jane");
+
+// ==================== trait (接口) ====================
+trait HasName {
+    fn get_name(&self) -> &str;
+}
+
+impl HasName for User {
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+
+fn greet(obj: &impl HasName) -> String {
+    format!("Hello, {}", obj.get_name())
+}
+
+// 或使用 dyn trait
+fn greet_dyn(obj: &dyn HasName) -> String {
+    format!("Hello, {}", obj.get_name())
+}
+
+// ==================== 解构 ====================
+let User { id, name, .. } = user;
+
+// match 解构
+match user {
+    User { id: 0, .. } => println!("Guest"),
+    User { name, .. } => println!("User: {}", name),
+}
+```
+
+### 集合操作对比
+
+```
+┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 操作            │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 数组追加        │ push()         │ append()       │ append()       │ push()         │
+│ 数组删除        │ splice()       │ remove()/pop() │ append切片     │ remove()       │
+│ 数组查找        │ indexOf()      │ index()        │ 手动循环       │ position()     │
+│ 数组包含        │ includes()     │ in             │ 手动循环       │ contains()     │
+│ 索引越界        │ undefined      │ IndexError     │ panic          │ panic/Option   │
+├─────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ Map 设置        │ set()          │ d[k]=v         │ m[k]=v         │ insert()       │
+│ Map 获取        │ get()          │ get()/d[k]     │ m[k]/comma-ok  │ get()          │
+│ Map 删除        │ delete()       │ del/pop()      │ delete()       │ remove()       │
+│ Key 不存在      │ undefined      │ KeyError/None  │ 零值/comma-ok  │ Option         │
+└─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+---
+
 ## 🔢 Math.trunc 截断函数对比
 
 `trunc` 函数用于截断数字的小数部分，只保留整数部分（向零取整）。
