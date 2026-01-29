@@ -7678,6 +7678,470 @@ impl Rectangle {
 
 ---
 
+## 📝 函数默认参数
+
+### 默认参数支持概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 默认参数 | ✅ | ✅ | ❌ | ❌ |
+| 命名参数 | ❌ (对象模拟) | ✅ | ❌ | ❌ |
+| 可选参数 | ✅ `?` | ✅ `= None` | ✅ 指针/变参 | ✅ `Option<T>` |
+| 变长参数 | ✅ `...` | ✅ `*args` | ✅ `...` | ❌ (宏实现) |
+| 关键字参数 | ❌ | ✅ `**kwargs` | ❌ | ❌ |
+
+### TypeScript 默认参数
+
+```typescript
+// ==================== 基础默认参数 ====================
+function greet(name: string, greeting: string = "Hello"): string {
+  return `${greeting}, ${name}!`;
+}
+
+greet("John");              // "Hello, John!"
+greet("John", "Hi");        // "Hi, John!"
+
+// ==================== 默认参数可以是表达式 ====================
+function createId(prefix: string = "id", timestamp: number = Date.now()): string {
+  return `${prefix}_${timestamp}`;
+}
+
+// ==================== 可选参数 (与默认参数不同) ====================
+function log(message: string, level?: string): void {
+  // level 类型是 string | undefined
+  console.log(`[${level ?? "INFO"}] ${message}`);
+}
+
+// ==================== 默认参数必须在必选参数之后 ====================
+// function bad(a = 1, b: number) {}  // ❌ 错误
+
+// 但可以用 undefined 触发默认值
+function example(a: string = "default", b: number): void {
+  console.log(a, b);
+}
+example(undefined, 42);     // "default" 42
+
+// ==================== 解构默认值 ====================
+function config({ host = "localhost", port = 3000 } = {}): void {
+  console.log(`${host}:${port}`);
+}
+
+config();                   // localhost:3000
+config({ port: 8080 });     // localhost:8080
+
+// ==================== 模拟命名参数 (推荐) ====================
+interface Options {
+  name: string;
+  age?: number;
+  email?: string;
+}
+
+function createUser({ name, age = 18, email = "" }: Options): void {
+  console.log(name, age, email);
+}
+
+createUser({ name: "John" });
+createUser({ name: "John", age: 25, email: "john@example.com" });
+
+// ==================== 剩余参数 ====================
+function sum(...numbers: number[]): number {
+  return numbers.reduce((a, b) => a + b, 0);
+}
+
+sum(1, 2, 3);               // 6
+
+// ==================== 函数重载模拟不同参数 ====================
+function format(value: string): string;
+function format(value: number, decimals?: number): string;
+function format(value: string | number, decimals?: number): string {
+  if (typeof value === "string") {
+    return value.toUpperCase();
+  }
+  return value.toFixed(decimals ?? 2);
+}
+```
+
+### Python 默认参数
+
+```python
+# ==================== 基础默认参数 ====================
+def greet(name: str, greeting: str = "Hello") -> str:
+    return f"{greeting}, {name}!"
+
+greet("John")               # "Hello, John!"
+greet("John", "Hi")         # "Hi, John!"
+greet("John", greeting="Hi")  # 命名参数调用
+
+# ==================== ⚠️ 可变默认参数陷阱 ====================
+# 错误示范 - 默认值在函数定义时创建，所有调用共享
+def bad_append(item, lst=[]):  # ❌ 危险！
+    lst.append(item)
+    return lst
+
+bad_append(1)               # [1]
+bad_append(2)               # [1, 2] 不是 [2]！
+
+# 正确做法 - 使用 None 作为哨兵
+def good_append(item, lst=None):
+    if lst is None:
+        lst = []
+    lst.append(item)
+    return lst
+
+# ==================== 仅位置参数 (Python 3.8+) ====================
+def func(pos_only, /, standard, *, kw_only):
+    pass
+
+# func(1, 2, 3)             # ❌ 错误：kw_only 必须用关键字
+func(1, 2, kw_only=3)       # ✅
+func(1, standard=2, kw_only=3)  # ✅
+
+# ==================== *args 和 **kwargs ====================
+def flexible(*args, **kwargs):
+    print(f"args: {args}")
+    print(f"kwargs: {kwargs}")
+
+flexible(1, 2, 3, name="John", age=25)
+# args: (1, 2, 3)
+# kwargs: {'name': 'John', 'age': 25}
+
+# ==================== 解包传参 ====================
+def add(a, b, c):
+    return a + b + c
+
+args = [1, 2, 3]
+add(*args)                  # 6
+
+kwargs = {"a": 1, "b": 2, "c": 3}
+add(**kwargs)               # 6
+
+# ==================== 类型提示的可选参数 ====================
+from typing import Optional
+
+def process(data: str, timeout: Optional[int] = None) -> str:
+    if timeout is None:
+        timeout = 30  # 默认超时
+    return f"Processing {data} with timeout {timeout}"
+
+# ==================== dataclass 默认值 ====================
+from dataclasses import dataclass, field
+
+@dataclass
+class Config:
+    host: str = "localhost"
+    port: int = 8080
+    tags: list = field(default_factory=list)  # 可变类型用 field
+
+# ==================== 函数重载 (类型提示) ====================
+from typing import overload
+
+@overload
+def parse(value: str) -> str: ...
+@overload
+def parse(value: int) -> int: ...
+
+def parse(value):
+    if isinstance(value, str):
+        return value.upper()
+    return value * 2
+```
+
+### Go 模拟默认参数
+
+```go
+// Go 不支持默认参数，需要使用其他模式
+
+// ==================== 方式 1: 函数重载模拟 (多个函数) ====================
+func Greet(name string) string {
+    return GreetWith(name, "Hello")
+}
+
+func GreetWith(name, greeting string) string {
+    return greeting + ", " + name + "!"
+}
+
+// ==================== 方式 2: 可变参数 ====================
+func Connect(host string, ports ...int) {
+    port := 3306  // 默认值
+    if len(ports) > 0 {
+        port = ports[0]
+    }
+    fmt.Printf("Connecting to %s:%d\n", host, port)
+}
+
+Connect("localhost")        // 使用默认端口
+Connect("localhost", 5432)  // 指定端口
+
+// ==================== 方式 3: 选项结构体 (推荐) ====================
+type Options struct {
+    Host    string
+    Port    int
+    Timeout time.Duration
+    Retry   int
+}
+
+// 默认值
+func defaultOptions() Options {
+    return Options{
+        Host:    "localhost",
+        Port:    8080,
+        Timeout: 30 * time.Second,
+        Retry:   3,
+    }
+}
+
+func NewClient(opts ...Options) *Client {
+    // 使用默认值
+    opt := defaultOptions()
+    if len(opts) > 0 {
+        // 覆盖提供的值
+        if opts[0].Host != "" {
+            opt.Host = opts[0].Host
+        }
+        if opts[0].Port != 0 {
+            opt.Port = opts[0].Port
+        }
+        // ... 其他字段
+    }
+    return &Client{options: opt}
+}
+
+// 使用
+NewClient()                             // 全部默认
+NewClient(Options{Port: 9000})          // 部分覆盖
+
+// ==================== 方式 4: 函数式选项 (最灵活) ====================
+type ClientOption func(*Client)
+
+func WithHost(host string) ClientOption {
+    return func(c *Client) {
+        c.host = host
+    }
+}
+
+func WithPort(port int) ClientOption {
+    return func(c *Client) {
+        c.port = port
+    }
+}
+
+func WithTimeout(d time.Duration) ClientOption {
+    return func(c *Client) {
+        c.timeout = d
+    }
+}
+
+func NewClient(options ...ClientOption) *Client {
+    // 默认值
+    c := &Client{
+        host:    "localhost",
+        port:    8080,
+        timeout: 30 * time.Second,
+    }
+    // 应用选项
+    for _, opt := range options {
+        opt(c)
+    }
+    return c
+}
+
+// 使用 - 非常清晰
+NewClient()
+NewClient(WithHost("example.com"))
+NewClient(WithHost("example.com"), WithPort(9000), WithTimeout(time.Minute))
+
+// ==================== 方式 5: 指针表示可选 ====================
+func Process(required string, optional *int) {
+    value := 100  // 默认值
+    if optional != nil {
+        value = *optional
+    }
+    fmt.Println(required, value)
+}
+
+// 辅助函数
+func IntPtr(v int) *int { return &v }
+
+Process("data", nil)        // 使用默认值
+Process("data", IntPtr(50)) // 指定值
+```
+
+### Rust 模拟默认参数
+
+```rust
+// Rust 不支持默认参数，需要使用其他模式
+
+// ==================== 方式 1: Option 类型 ====================
+fn greet(name: &str, greeting: Option<&str>) -> String {
+    let g = greeting.unwrap_or("Hello");
+    format!("{}, {}!", g, name)
+}
+
+greet("John", None);            // "Hello, John!"
+greet("John", Some("Hi"));      // "Hi, John!"
+
+// ==================== 方式 2: Default trait ====================
+#[derive(Default)]
+struct Config {
+    host: String,
+    port: u16,
+    timeout: u64,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            host: String::from("localhost"),
+            port: 8080,
+            timeout: 30,
+        }
+    }
+}
+
+// 使用 struct update 语法
+let config = Config {
+    port: 9000,
+    ..Default::default()
+};
+
+// ==================== 方式 3: Builder 模式 (推荐) ====================
+struct Client {
+    host: String,
+    port: u16,
+    timeout: u64,
+}
+
+struct ClientBuilder {
+    host: String,
+    port: u16,
+    timeout: u64,
+}
+
+impl ClientBuilder {
+    fn new() -> Self {
+        ClientBuilder {
+            host: String::from("localhost"),
+            port: 8080,
+            timeout: 30,
+        }
+    }
+    
+    fn host(mut self, host: &str) -> Self {
+        self.host = host.to_string();
+        self
+    }
+    
+    fn port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+    
+    fn timeout(mut self, timeout: u64) -> Self {
+        self.timeout = timeout;
+        self
+    }
+    
+    fn build(self) -> Client {
+        Client {
+            host: self.host,
+            port: self.port,
+            timeout: self.timeout,
+        }
+    }
+}
+
+// 使用 - 链式调用
+let client = ClientBuilder::new()
+    .host("example.com")
+    .port(9000)
+    .build();
+
+// ==================== 方式 4: 使用 derive_builder crate ====================
+// Cargo.toml: derive_builder = "0.12"
+
+use derive_builder::Builder;
+
+#[derive(Builder, Default)]
+#[builder(setter(into))]
+struct Request {
+    #[builder(default = "\"localhost\".to_string()")]
+    host: String,
+    #[builder(default = "8080")]
+    port: u16,
+    #[builder(default)]
+    headers: Vec<String>,
+}
+
+let req = RequestBuilder::default()
+    .host("example.com")
+    .build()
+    .unwrap();
+
+// ==================== 方式 5: 函数重载 (多个函数) ====================
+fn connect(host: &str) -> Connection {
+    connect_with_port(host, 8080)
+}
+
+fn connect_with_port(host: &str, port: u16) -> Connection {
+    connect_with_options(host, port, 30)
+}
+
+fn connect_with_options(host: &str, port: u16, timeout: u64) -> Connection {
+    // 实际连接逻辑
+    Connection { host: host.to_string(), port, timeout }
+}
+
+// ==================== 方式 6: 宏实现可变参数 ====================
+macro_rules! greet {
+    ($name:expr) => {
+        greet!($name, "Hello")
+    };
+    ($name:expr, $greeting:expr) => {
+        format!("{}, {}!", $greeting, $name)
+    };
+}
+
+greet!("John");             // "Hello, John!"
+greet!("John", "Hi");       // "Hi, John!"
+
+// ==================== 方式 7: Into trait 灵活参数 ====================
+fn process<S: Into<String>>(data: S) {
+    let s: String = data.into();
+    println!("{}", s);
+}
+
+process("literal");         // &str
+process(String::from("owned"));  // String
+```
+
+### 默认参数模式对比
+
+```
+┌─────────────────────┬────────────────┬────────────────┬────────────────┬────────────────┐
+│ 模式                │ TypeScript     │ Python         │ Go             │ Rust           │
+├─────────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 原生默认参数        │ ✅ param = val │ ✅ param = val │ ❌             │ ❌             │
+│ 可选参数            │ param?         │ param = None   │ *type / ...    │ Option<T>      │
+│ 命名参数            │ 对象解构       │ ✅ 原生支持    │ 结构体         │ 结构体/Builder │
+│ 变长参数            │ ...rest        │ *args          │ ...type        │ 宏             │
+│ 关键字参数          │ ❌             │ **kwargs       │ ❌             │ ❌             │
+├─────────────────────┼────────────────┼────────────────┼────────────────┼────────────────┤
+│ 推荐的复杂参数模式  │ Options 对象   │ dataclass      │ Functional Opt │ Builder        │
+│ 可变默认值陷阱      │ ❌ 无          │ ⚠️ 有！        │ ❌ 无          │ ❌ 无          │
+└─────────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### 最佳实践总结
+
+| 语言 | 推荐方式 | 说明 |
+|------|----------|------|
+| TypeScript | 默认参数 + 解构对象 | 对于简单情况用默认参数，复杂配置用 Options 接口 |
+| Python | 默认参数 + 命名参数 | 避免可变默认值，使用 `None` + 类型提示 |
+| Go | Functional Options | 最灵活、清晰，适合公共 API |
+| Rust | Builder Pattern | 类型安全、链式调用、编译期检查 |
+
+---
+
 ## 🧬 泛型函数
 
 ### 泛型支持概览
