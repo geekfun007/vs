@@ -698,6 +698,577 @@ let (a, b, c) = tuple;        // 解构
 
 ---
 
+## 🔪 Slice 切片操作
+
+### 切片概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 语法 | `arr.slice(start, end)` | `list[start:end]` | `slice[start:end]` | `&slice[start..end]` |
+| 负索引 | ❌ (需 at()) | ✅ | ❌ | ❌ |
+| 步长 | ❌ | ✅ `[::step]` | ❌ | ❌ (需迭代器) |
+| 原地修改 | `splice()` | `list[a:b] = x` | 赋值 | `copy_from_slice` |
+| 返回类型 | 新数组 | 新列表 | 切片(引用) | 切片(引用) |
+
+### TypeScript 切片操作
+
+```typescript
+// ==================== slice() 基本语法 ====================
+const arr = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+// slice(start, end) - 不包含 end
+arr.slice(2, 5);     // [2, 3, 4]
+arr.slice(3);        // [3, 4, 5, 6, 7, 8, 9] - 从索引3到末尾
+arr.slice();         // [0, 1, ..., 9] - 浅拷贝整个数组
+arr.slice(0, -1);    // [0, 1, ..., 8] - 负数从末尾计算
+arr.slice(-3);       // [7, 8, 9] - 最后3个元素
+arr.slice(-5, -2);   // [5, 6, 7] - 倒数第5到倒数第2(不含)
+
+// ==================== 字符串切片 ====================
+const str = "Hello, World!";
+str.slice(0, 5);     // "Hello"
+str.slice(7);        // "World!"
+str.slice(-6, -1);   // "World"
+
+// substring vs slice
+str.substring(0, 5); // "Hello" - 负数视为0，参数可交换
+str.slice(0, 5);     // "Hello" - 支持负数，参数不交换
+
+// ==================== splice() 原地修改 ====================
+const nums = [1, 2, 3, 4, 5];
+
+// splice(start, deleteCount, ...items)
+nums.splice(2, 1);           // 删除索引2的元素，返回 [3]，nums = [1, 2, 4, 5]
+nums.splice(1, 0, 10, 11);   // 在索引1插入，nums = [1, 10, 11, 2, 4, 5]
+nums.splice(2, 2, 20);       // 替换，nums = [1, 10, 20, 4, 5]
+
+// ==================== 访问单个元素 ====================
+const items = ['a', 'b', 'c', 'd', 'e'];
+
+items[0];            // 'a'
+items[items.length - 1];  // 'e' - 最后一个
+items.at(0);         // 'a' - ES2022
+items.at(-1);        // 'e' - 支持负索引
+items.at(-2);        // 'd'
+
+// ==================== 分块切片 ====================
+function chunk<T>(arr: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+        result.push(arr.slice(i, i + size));
+    }
+    return result;
+}
+
+chunk([1, 2, 3, 4, 5], 2);  // [[1, 2], [3, 4], [5]]
+
+// ==================== 滑动窗口 ====================
+function* slidingWindow<T>(arr: T[], size: number): Generator<T[]> {
+    for (let i = 0; i <= arr.length - size; i++) {
+        yield arr.slice(i, i + size);
+    }
+}
+
+[...slidingWindow([1, 2, 3, 4, 5], 3)];  // [[1,2,3], [2,3,4], [3,4,5]]
+
+// ==================== 头尾操作 ====================
+const data = [1, 2, 3, 4, 5];
+
+// 获取头部/尾部
+const [first, ...rest] = data;     // first=1, rest=[2,3,4,5]
+const [head, second] = data;       // head=1, second=2
+const last = data.at(-1);          // 5
+
+// 去除头部/尾部
+data.slice(1);       // [2, 3, 4, 5] - 去除第一个
+data.slice(0, -1);   // [1, 2, 3, 4] - 去除最后一个
+data.slice(1, -1);   // [2, 3, 4] - 去除首尾
+
+// ==================== TypedArray 切片 ====================
+const buffer = new ArrayBuffer(16);
+const int32View = new Int32Array(buffer);
+int32View.set([1, 2, 3, 4]);
+
+// subarray 返回视图(共享内存)
+const sub = int32View.subarray(1, 3);  // Int32Array [2, 3]
+sub[0] = 100;  // 修改会影响原数组
+
+// slice 返回拷贝
+const copy = int32View.slice(1, 3);    // Int32Array [2, 3]
+copy[0] = 100;  // 不影响原数组
+```
+
+### Python 切片操作
+
+```python
+# ==================== 基本切片语法 ====================
+lst = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# list[start:stop:step]
+lst[2:5]        # [2, 3, 4] - 不包含 stop
+lst[3:]         # [3, 4, 5, 6, 7, 8, 9] - 从索引3到末尾
+lst[:5]         # [0, 1, 2, 3, 4] - 从开头到索引5(不含)
+lst[:]          # [0, 1, ..., 9] - 浅拷贝
+lst[::2]        # [0, 2, 4, 6, 8] - 步长为2
+lst[1::2]       # [1, 3, 5, 7, 9] - 从索引1开始，步长为2
+
+# ==================== 负索引 ====================
+lst[-1]         # 9 - 最后一个
+lst[-3:]        # [7, 8, 9] - 最后3个
+lst[:-3]        # [0, 1, 2, 3, 4, 5, 6] - 除了最后3个
+lst[-5:-2]      # [5, 6, 7] - 倒数第5到倒数第2(不含)
+lst[::-1]       # [9, 8, ..., 0] - 反转列表
+lst[::-2]       # [9, 7, 5, 3, 1] - 反向步长2
+
+# ==================== 切片对象 ====================
+s = slice(2, 7, 2)
+lst[s]          # [2, 4, 6] - 等同于 lst[2:7:2]
+
+# 获取切片的实际索引
+s.indices(len(lst))  # (2, 7, 2) - (start, stop, step)
+
+# ==================== 字符串切片 ====================
+text = "Hello, World!"
+text[0:5]       # "Hello"
+text[7:]        # "World!"
+text[::-1]      # "!dlroW ,olleH" - 反转
+text[::2]       # "Hlo ol!"
+
+# ==================== 切片赋值 (原地修改) ====================
+nums = [1, 2, 3, 4, 5]
+
+# 替换切片
+nums[1:4] = [20, 30]    # [1, 20, 30, 5] - 可以不等长
+nums[1:1] = [10, 11]    # [1, 10, 11, 20, 30, 5] - 插入
+
+# 删除切片
+nums[2:4] = []          # [1, 10, 30, 5]
+del nums[1:3]           # [1, 5]
+
+# 步长切片赋值 (必须等长)
+lst = [0, 1, 2, 3, 4, 5]
+lst[::2] = [10, 20, 30]  # [10, 1, 20, 3, 30, 5]
+
+# ==================== 元组切片 ====================
+t = (0, 1, 2, 3, 4)
+t[1:4]          # (1, 2, 3) - 返回新元组
+t[::-1]         # (4, 3, 2, 1, 0)
+# t[1:3] = (10, 20)  # 错误! 元组不可变
+
+# ==================== numpy 数组切片 ====================
+import numpy as np
+
+arr = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+
+arr[0]          # array([1, 2, 3]) - 第一行
+arr[:, 0]       # array([1, 4, 7]) - 第一列
+arr[0:2, 1:3]   # array([[2, 3], [5, 6]]) - 子矩阵
+arr[::2, ::2]   # array([[1, 3], [7, 9]]) - 间隔取值
+
+# numpy 切片是视图
+view = arr[0:2, 0:2]
+view[0, 0] = 100  # 修改会影响原数组
+
+# 拷贝
+copy = arr[0:2, 0:2].copy()
+
+# ==================== 高级切片技巧 ====================
+# 分块
+def chunk(lst, size):
+    return [lst[i:i+size] for i in range(0, len(lst), size)]
+
+chunk([1, 2, 3, 4, 5], 2)  # [[1, 2], [3, 4], [5]]
+
+# 滑动窗口
+def sliding_window(lst, size):
+    return [lst[i:i+size] for i in range(len(lst) - size + 1)]
+
+sliding_window([1, 2, 3, 4, 5], 3)  # [[1,2,3], [2,3,4], [3,4,5]]
+
+# 旋转列表
+def rotate(lst, n):
+    n = n % len(lst)
+    return lst[n:] + lst[:n]
+
+rotate([1, 2, 3, 4, 5], 2)  # [3, 4, 5, 1, 2]
+
+# ==================== memoryview 切片 ====================
+data = bytearray(b'Hello World')
+view = memoryview(data)
+
+# 切片共享内存
+sub = view[0:5]
+sub[0] = ord('h')  # data 变为 b'hello World'
+
+# 转换为 bytes
+bytes(view[6:11])  # b'World'
+```
+
+### Go 切片操作
+
+```go
+// ==================== 切片基础 ====================
+// 切片是对底层数组的引用视图
+arr := [10]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+// 从数组创建切片
+slice := arr[2:5]    // [2 3 4] - 不包含索引5
+slice2 := arr[3:]    // [3 4 5 6 7 8 9]
+slice3 := arr[:5]    // [0 1 2 3 4]
+slice4 := arr[:]     // [0 1 2 3 4 5 6 7 8 9]
+
+// 直接创建切片
+nums := []int{1, 2, 3, 4, 5}
+empty := []int{}
+withCap := make([]int, 5, 10)  // len=5, cap=10
+
+// ==================== 切片属性 ====================
+s := []int{1, 2, 3, 4, 5}
+len(s)           // 5 - 长度
+cap(s)           // 5 - 容量 (到底层数组末尾的长度)
+
+// 切片的切片
+sub := s[1:4]    // [2 3 4]
+len(sub)         // 3
+cap(sub)         // 4 - 从索引1到原切片末尾
+
+// ==================== 切片是引用 ====================
+original := []int{1, 2, 3, 4, 5}
+slice := original[1:4]
+slice[0] = 100   // original 变为 [1 100 3 4 5]
+
+// 创建独立副本
+copySlice := make([]int, len(original))
+copy(copySlice, original)
+
+// 或使用 append
+copySlice2 := append([]int{}, original...)
+
+// ==================== append 操作 ====================
+s := []int{1, 2, 3}
+
+// 追加元素
+s = append(s, 4)           // [1 2 3 4]
+s = append(s, 5, 6, 7)     // [1 2 3 4 5 6 7]
+
+// 追加切片
+other := []int{8, 9}
+s = append(s, other...)    // [1 2 3 4 5 6 7 8 9]
+
+// 头部插入
+s = append([]int{0}, s...) // [0 1 2 3 ...]
+
+// 中间插入
+idx := 3
+s = append(s[:idx], append([]int{100}, s[idx:]...)...)
+
+// ==================== 删除元素 ====================
+s := []int{1, 2, 3, 4, 5}
+
+// 删除索引 i
+i := 2
+s = append(s[:i], s[i+1:]...)  // [1 2 4 5]
+
+// 删除范围 [i, j)
+s = append(s[:i], s[j:]...)
+
+// 保持顺序删除最后一个
+s = s[:len(s)-1]
+
+// 不保持顺序删除 (O(1))
+s[i] = s[len(s)-1]
+s = s[:len(s)-1]
+
+// ==================== 切片技巧 ====================
+// 完整切片表达式 slice[low:high:max]
+arr := [5]int{1, 2, 3, 4, 5}
+s := arr[1:3:4]   // [2 3], cap=3 (4-1)
+
+// 限制容量防止意外修改
+original := []int{1, 2, 3, 4, 5}
+limited := original[1:3:3]  // cap=2，append 会创建新数组
+
+// ==================== 二维切片 ====================
+// 创建 3x4 矩阵
+matrix := make([][]int, 3)
+for i := range matrix {
+    matrix[i] = make([]int, 4)
+}
+
+// 初始化
+matrix := [][]int{
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9},
+}
+
+// 访问
+matrix[0]        // [1 2 3]
+matrix[0][1]     // 2
+
+// 行切片
+row := matrix[1][:]   // [4 5 6]
+
+// 列切片 (需要循环)
+col := make([]int, len(matrix))
+for i := range matrix {
+    col[i] = matrix[i][1]
+}
+
+// ==================== 字符串切片 ====================
+s := "Hello, 世界"
+
+// 字节切片
+s[0:5]           // "Hello"
+s[7:]            // "世界"
+
+// 注意: 中文字符占3个字节
+s[7:10]          // "世" - 正确
+// s[7:8]        // 乱码 - 错误
+
+// 安全的字符切片
+runes := []rune(s)
+string(runes[7:9])  // "世界"
+
+// ==================== 分块与滑动窗口 ====================
+func chunk[T any](slice []T, size int) [][]T {
+    var result [][]T
+    for i := 0; i < len(slice); i += size {
+        end := i + size
+        if end > len(slice) {
+            end = len(slice)
+        }
+        result = append(result, slice[i:end])
+    }
+    return result
+}
+
+func slidingWindow[T any](slice []T, size int) [][]T {
+    if len(slice) < size {
+        return nil
+    }
+    result := make([][]T, 0, len(slice)-size+1)
+    for i := 0; i <= len(slice)-size; i++ {
+        result = append(result, slice[i:i+size])
+    }
+    return result
+}
+
+// ==================== 预分配优化 ====================
+// 已知大小时预分配
+result := make([]int, 0, expectedSize)
+for _, v := range data {
+    result = append(result, process(v))
+}
+
+// 清空但保留容量
+s = s[:0]
+```
+
+### Rust 切片操作
+
+```rust
+// ==================== 切片基础 ====================
+// 切片是对连续序列的引用视图
+let arr = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+// 创建切片 (引用)
+let slice: &[i32] = &arr[2..5];    // [2, 3, 4]
+let slice2 = &arr[3..];           // [3, 4, 5, 6, 7, 8, 9]
+let slice3 = &arr[..5];           // [0, 1, 2, 3, 4]
+let slice4 = &arr[..];            // 全部
+
+// 包含结束索引
+let inclusive = &arr[2..=5];      // [2, 3, 4, 5]
+
+// Vec 切片
+let vec = vec![1, 2, 3, 4, 5];
+let vec_slice = &vec[1..4];       // [2, 3, 4]
+
+// ==================== 可变切片 ====================
+let mut arr = [1, 2, 3, 4, 5];
+let slice = &mut arr[1..4];
+slice[0] = 100;                   // arr 变为 [1, 100, 3, 4, 5]
+
+// ==================== 切片方法 ====================
+let s = &[1, 2, 3, 4, 5][..];
+
+// 长度
+s.len();                          // 5
+s.is_empty();                     // false
+
+// 访问元素
+s[0];                             // 1 - 可能 panic
+s.get(0);                         // Some(&1)
+s.get(10);                        // None
+s.first();                        // Some(&1)
+s.last();                         // Some(&5)
+
+// 安全访问
+if let Some(val) = s.get(2) {
+    println!("{}", val);
+}
+
+// ==================== 分割切片 ====================
+let s = &[1, 2, 3, 4, 5][..];
+
+// split_at
+let (left, right) = s.split_at(2);  // [1, 2], [3, 4, 5]
+
+// split_first / split_last
+let (first, rest) = s.split_first().unwrap();  // 1, [2, 3, 4, 5]
+let (last, init) = s.split_last().unwrap();    // 5, [1, 2, 3, 4]
+
+// split 按条件
+let parts: Vec<_> = s.split(|&x| x == 3).collect();
+// [[1, 2], [4, 5]]
+
+// splitn 限制数量
+let parts: Vec<_> = s.splitn(2, |&x| x == 3).collect();
+
+// ==================== 窗口与分块 ====================
+let s = &[1, 2, 3, 4, 5][..];
+
+// windows - 滑动窗口
+for window in s.windows(3) {
+    println!("{:?}", window);     // [1,2,3], [2,3,4], [3,4,5]
+}
+
+// chunks - 分块
+for chunk in s.chunks(2) {
+    println!("{:?}", chunk);      // [1,2], [3,4], [5]
+}
+
+// chunks_exact - 精确分块 (忽略不足)
+for chunk in s.chunks_exact(2) {
+    println!("{:?}", chunk);      // [1,2], [3,4]
+}
+let remainder = s.chunks_exact(2).remainder();  // [5]
+
+// rchunks - 从右侧分块
+for chunk in s.rchunks(2) {
+    println!("{:?}", chunk);      // [4,5], [2,3], [1]
+}
+
+// ==================== 可变切片操作 ====================
+let mut arr = [5, 2, 8, 1, 9, 3];
+let s = &mut arr[..];
+
+// 排序
+s.sort();                         // [1, 2, 3, 5, 8, 9]
+s.sort_by(|a, b| b.cmp(a));       // 降序
+s.sort_by_key(|x| -x);            // 按key
+
+// 反转
+s.reverse();                      // [9, 8, 5, 3, 2, 1]
+
+// 旋转
+s.rotate_left(2);                 // [5, 3, 2, 1, 9, 8]
+s.rotate_right(2);                // [9, 8, 5, 3, 2, 1]
+
+// 交换
+s.swap(0, 5);                     // 交换索引0和5
+
+// 填充
+s.fill(0);                        // 全部填充为0
+
+// ==================== 拷贝操作 ====================
+let src = [1, 2, 3];
+let mut dst = [0; 5];
+
+// copy_from_slice (长度必须相等)
+dst[..3].copy_from_slice(&src);   // [1, 2, 3, 0, 0]
+
+// clone_from_slice (Clone 类型)
+dst[..3].clone_from_slice(&src);
+
+// 部分拷贝
+let mut vec = vec![1, 2, 3, 4, 5];
+vec.copy_within(1..4, 0);         // [2, 3, 4, 4, 5]
+
+// ==================== 搜索 ====================
+let s = &[1, 2, 3, 4, 5, 3][..];
+
+// 查找
+s.contains(&3);                   // true
+s.starts_with(&[1, 2]);           // true
+s.ends_with(&[5, 3]);             // true
+
+// 位置
+s.iter().position(|&x| x == 3);   // Some(2)
+s.iter().rposition(|&x| x == 3);  // Some(5)
+
+// 二分查找 (已排序)
+let sorted = &[1, 2, 3, 4, 5][..];
+sorted.binary_search(&3);         // Ok(2)
+sorted.binary_search(&6);         // Err(5) - 插入位置
+
+// ==================== 字符串切片 ====================
+let s = "Hello, 世界";
+
+// 字节切片
+let bytes: &[u8] = s.as_bytes();
+
+// 字符串切片 (必须是有效 UTF-8 边界)
+let hello = &s[0..5];             // "Hello"
+// let bad = &s[0..8];            // panic! 无效边界
+
+// 安全切片
+let slice = s.get(0..5);          // Some("Hello")
+let invalid = s.get(0..8);        // None
+
+// 字符迭代
+for (i, c) in s.char_indices() {
+    println!("{}: {}", i, c);
+}
+
+// ==================== 迭代器转切片 ====================
+let vec: Vec<i32> = (1..=5).collect();
+let slice: &[i32] = &vec;
+
+// 切片转 Vec
+let vec2: Vec<i32> = slice.to_vec();
+
+// 数组转切片
+let arr = [1, 2, 3, 4, 5];
+let slice: &[i32] = &arr;
+
+// Box<[T]> - 堆上固定大小
+let boxed: Box<[i32]> = vec![1, 2, 3].into_boxed_slice();
+```
+
+### 切片操作对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 基本切片        │ arr.slice(1, 4)      │ lst[1:4]             │ s[1:4]               │ &s[1..4]             │
+│ 从开头          │ arr.slice(0, n)      │ lst[:n]              │ s[:n]                │ &s[..n]              │
+│ 到末尾          │ arr.slice(n)         │ lst[n:]              │ s[n:]                │ &s[n..]              │
+│ 负索引          │ arr.at(-1)           │ lst[-1]              │ s[len(s)-1]          │ s.last()             │
+│ 步长            │ ❌                   │ lst[::2]             │ ❌                   │ iter().step_by(2)    │
+│ 反转            │ arr.reverse()        │ lst[::-1]            │ slices.Reverse()     │ s.reverse()          │
+│ 复制            │ [...arr]             │ lst[:]               │ copy(dst, src)       │ s.to_vec()           │
+│ 修改是否影响原  │ ❌ (新数组)          │ ❌ (新列表)          │ ✅ (视图)            │ ✅ (引用)            │
+│ 分块            │ 手动实现             │ 手动实现             │ 手动实现             │ chunks()             │
+│ 滑动窗口        │ 手动实现             │ 手动实现             │ 手动实现             │ windows()            │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 常见切片模式
+
+| 模式 | 描述 | 示例 |
+|------|------|------|
+| **浅拷贝** | 创建独立副本 | `[...arr]` / `lst[:]` / `copy()` / `.to_vec()` |
+| **头尾分离** | 获取首/尾元素和剩余 | 解构 / `split_first` |
+| **分块处理** | 固定大小分组 | `chunks()` / 手动循环 |
+| **滑动窗口** | 连续子序列 | `windows()` / 手动循环 |
+| **限制容量** | 防止意外扩展 | Go `s[a:b:c]` |
+| **安全访问** | 避免越界 | `.get()` / `try` |
+
+---
+
 ## 🗺️ Map / Struct / Interface
 
 ### 映射类型概览
