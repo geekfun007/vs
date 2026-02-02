@@ -12561,6 +12561,569 @@ async fn fetch_with_deadline(url: &str) -> Result<String, Error> {
 }
 ```
 
+#### Cancel - 取消操作
+
+**TypeScript**
+```typescript
+// ==================== AbortController ====================
+// 基础取消
+const controller = new AbortController();
+const { signal } = controller;
+
+// 发起可取消的请求
+fetch('/api/data', { signal })
+    .then(response => response.json())
+    .catch(err => {
+        if (err.name === 'AbortError') {
+            console.log('Request was cancelled');
+        }
+    });
+
+// 取消请求
+controller.abort();
+
+// 带原因的取消
+controller.abort(new Error('User cancelled'));
+
+// ==================== 多请求共享取消 ====================
+class CancellableRequestManager {
+    private controller: AbortController | null = null;
+    
+    async fetch(url: string): Promise<Response> {
+        // 取消之前的请求
+        this.controller?.abort();
+        this.controller = new AbortController();
+        
+        return fetch(url, { signal: this.controller.signal });
+    }
+    
+    cancel(): void {
+        this.controller?.abort();
+        this.controller = null;
+    }
+}
+
+// ==================== 可取消的 Promise ====================
+function cancellablePromise<T>(
+    executor: (signal: AbortSignal) => Promise<T>
+): { promise: Promise<T>; cancel: () => void } {
+    const controller = new AbortController();
+    
+    const promise = executor(controller.signal);
+    
+    return {
+        promise,
+        cancel: () => controller.abort()
+    };
+}
+
+// 使用
+const { promise, cancel } = cancellablePromise(async (signal) => {
+    const response = await fetch('/api/data', { signal });
+    return response.json();
+});
+
+// 需要时取消
+cancel();
+
+// ==================== 链接多个 AbortSignal ====================
+function mergeSignals(...signals: AbortSignal[]): AbortSignal {
+    const controller = new AbortController();
+    
+    for (const signal of signals) {
+        if (signal.aborted) {
+            controller.abort(signal.reason);
+            break;
+        }
+        signal.addEventListener('abort', () => {
+            controller.abort(signal.reason);
+        }, { once: true });
+    }
+    
+    return controller.signal;
+}
+
+// AbortSignal.any (现代浏览器)
+const combined = AbortSignal.any([signal1, signal2, signal3]);
+
+// ==================== 可取消的异步迭代 ====================
+async function* cancellableFetch(
+    urls: string[],
+    signal: AbortSignal
+): AsyncGenerator<Response> {
+    for (const url of urls) {
+        if (signal.aborted) {
+            throw new Error('Cancelled');
+        }
+        yield await fetch(url, { signal });
+    }
+}
+
+// 使用
+const controller = new AbortController();
+for await (const response of cancellableFetch(urls, controller.signal)) {
+    // 处理响应
+    if (shouldStop) {
+        controller.abort();
+        break;
+    }
+}
+```
+
+**Python**
+```python
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Optional
+
+# ==================== asyncio.Task.cancel ====================
+async def cancellable_operation():
+    task = asyncio.create_task(long_running_operation())
+    
+    # 稍后取消
+    await asyncio.sleep(1)
+    task.cancel()
+    
+    try:
+        await task
+    except asyncio.CancelledError:
+        print("Task was cancelled")
+
+# ==================== 处理取消 ====================
+async def graceful_cancel():
+    try:
+        await long_running_operation()
+    except asyncio.CancelledError:
+        # 清理资源
+        await cleanup()
+        raise  # 重新抛出让调用者知道被取消了
+
+# 屏蔽取消（谨慎使用）
+async def unshieldable_operation():
+    try:
+        # 这部分不能被取消
+        await asyncio.shield(critical_operation())
+    except asyncio.CancelledError:
+        print("Outer cancelled, but inner completed")
+        raise
+
+# ==================== 取消令牌模式 ====================
+class CancellationToken:
+    def __init__(self):
+        self._cancelled = False
+        self._event = asyncio.Event()
+    
+    def cancel(self):
+        self._cancelled = True
+        self._event.set()
+    
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancelled
+    
+    async def wait(self):
+        """等待取消"""
+        await self._event.wait()
+    
+    def check(self):
+        """检查是否取消，是则抛出异常"""
+        if self._cancelled:
+            raise asyncio.CancelledError("Operation cancelled")
+
+# 使用取消令牌
+async def long_operation(token: CancellationToken):
+    for i in range(100):
+        token.check()  # 检查点
+        await asyncio.sleep(0.1)
+        # 执行工作...
+
+# ==================== 取消多个任务 ====================
+async def cancel_all_tasks():
+    tasks = [
+        asyncio.create_task(fetch(url))
+        for url in urls
+    ]
+    
+    # 等待第一个完成
+    done, pending = await asyncio.wait(
+        tasks,
+        return_when=asyncio.FIRST_COMPLETED
+    )
+    
+    # 取消其余任务
+    for task in pending:
+        task.cancel()
+    
+    # 等待取消完成
+    await asyncio.gather(*pending, return_exceptions=True)
+    
+    return done.pop().result()
+
+# ==================== TaskGroup 取消 (Python 3.11+) ====================
+async def taskgroup_cancel():
+    try:
+        async with asyncio.TaskGroup() as tg:
+            task1 = tg.create_task(operation1())
+            task2 = tg.create_task(operation2())
+            task3 = tg.create_task(operation3())
+            # 如果任一任务失败，其他都会被取消
+    except* ValueError as eg:
+        print(f"Some tasks failed: {eg.exceptions}")
+
+# ==================== 超时自动取消 ====================
+async def auto_cancel_on_timeout():
+    async with asyncio.timeout(5.0) as cm:
+        await long_operation()
+    
+    if cm.expired():
+        print("Operation was cancelled due to timeout")
+```
+
+**Go**
+```go
+import (
+    "context"
+    "errors"
+)
+
+// ==================== context.WithCancel ====================
+func cancellableOperation() {
+    ctx, cancel := context.WithCancel(context.Background())
+    
+    go func() {
+        // 模拟某个条件触发取消
+        time.Sleep(2 * time.Second)
+        cancel()
+    }()
+    
+    // 执行可取消的操作
+    result, err := fetchWithCtx(ctx, "/api/data")
+    if errors.Is(err, context.Canceled) {
+        fmt.Println("Operation was cancelled")
+    }
+}
+
+// ==================== 检查取消状态 ====================
+func longOperation(ctx context.Context) error {
+    for i := 0; i < 100; i++ {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()  // context.Canceled 或 context.DeadlineExceeded
+        default:
+            // 继续工作
+            time.Sleep(100 * time.Millisecond)
+            doWork(i)
+        }
+    }
+    return nil
+}
+
+// ==================== 传播取消 ====================
+func parentOperation(ctx context.Context) error {
+    // 子操作会继承父的取消信号
+    g, ctx := errgroup.WithContext(ctx)
+    
+    g.Go(func() error {
+        return childOperation1(ctx)
+    })
+    
+    g.Go(func() error {
+        return childOperation2(ctx)
+    })
+    
+    // 任一子操作失败或被取消，其他都会收到取消信号
+    return g.Wait()
+}
+
+// ==================== 带原因的取消 ====================
+func cancelWithCause() {
+    ctx, cancel := context.WithCancelCause(context.Background())
+    
+    go func() {
+        cancel(errors.New("user requested cancellation"))
+    }()
+    
+    <-ctx.Done()
+    
+    // 获取取消原因
+    cause := context.Cause(ctx)
+    fmt.Printf("Cancelled because: %v\n", cause)
+}
+
+// ==================== 优雅关闭模式 ====================
+type Worker struct {
+    ctx    context.Context
+    cancel context.CancelFunc
+    done   chan struct{}
+}
+
+func NewWorker() *Worker {
+    ctx, cancel := context.WithCancel(context.Background())
+    w := &Worker{
+        ctx:    ctx,
+        cancel: cancel,
+        done:   make(chan struct{}),
+    }
+    go w.run()
+    return w
+}
+
+func (w *Worker) run() {
+    defer close(w.done)
+    
+    for {
+        select {
+        case <-w.ctx.Done():
+            // 清理资源
+            w.cleanup()
+            return
+        default:
+            w.doWork()
+        }
+    }
+}
+
+func (w *Worker) Stop() {
+    w.cancel()
+    <-w.done  // 等待完全停止
+}
+
+func (w *Worker) cleanup() {
+    fmt.Println("Cleaning up...")
+}
+
+func (w *Worker) doWork() {
+    // 工作逻辑
+}
+
+// ==================== HTTP 请求取消 ====================
+func cancellableHTTPRequest(ctx context.Context, url string) ([]byte, error) {
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return nil, err
+    }
+    
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        if errors.Is(err, context.Canceled) {
+            return nil, fmt.Errorf("request cancelled: %w", err)
+        }
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    return io.ReadAll(resp.Body)
+}
+
+// ==================== Channel 方式取消 ====================
+func workerWithStopChannel(stop <-chan struct{}) {
+    for {
+        select {
+        case <-stop:
+            fmt.Println("Worker stopped")
+            return
+        default:
+            doWork()
+        }
+    }
+}
+
+// 使用
+func main() {
+    stop := make(chan struct{})
+    go workerWithStopChannel(stop)
+    
+    time.Sleep(5 * time.Second)
+    close(stop)  // 发送停止信号
+}
+```
+
+**Rust**
+```rust
+use tokio::select;
+use tokio_util::sync::CancellationToken;
+use std::sync::Arc;
+
+// ==================== CancellationToken ====================
+async fn cancellable_operation(token: CancellationToken) -> Result<String, Error> {
+    select! {
+        result = fetch_data() => result,
+        _ = token.cancelled() => Err(Error::Cancelled),
+    }
+}
+
+// 使用
+async fn main() {
+    let token = CancellationToken::new();
+    let token_clone = token.clone();
+    
+    // 启动可取消的任务
+    let handle = tokio::spawn(async move {
+        cancellable_operation(token_clone).await
+    });
+    
+    // 稍后取消
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    token.cancel();
+    
+    match handle.await {
+        Ok(Ok(result)) => println!("Got result: {}", result),
+        Ok(Err(Error::Cancelled)) => println!("Operation was cancelled"),
+        _ => println!("Task failed"),
+    }
+}
+
+// ==================== 子令牌（层级取消） ====================
+async fn hierarchical_cancel() {
+    let parent_token = CancellationToken::new();
+    let child_token = parent_token.child_token();
+    
+    // 取消父令牌会同时取消子令牌
+    tokio::spawn({
+        let token = child_token.clone();
+        async move {
+            token.cancelled().await;
+            println!("Child task cancelled");
+        }
+    });
+    
+    parent_token.cancel();  // 子任务也会被取消
+}
+
+// ==================== JoinSet 取消 ====================
+async fn cancel_joinset() {
+    let mut set = tokio::task::JoinSet::new();
+    
+    for i in 0..10 {
+        set.spawn(async move {
+            tokio::time::sleep(Duration::from_secs(i)).await;
+            i
+        });
+    }
+    
+    // 等待第一个完成
+    if let Some(result) = set.join_next().await {
+        println!("First result: {:?}", result);
+    }
+    
+    // 取消剩余所有任务
+    set.abort_all();
+    
+    // 等待所有取消完成
+    while set.join_next().await.is_some() {}
+}
+
+// ==================== tokio::task::abort ====================
+async fn abort_task() {
+    let handle = tokio::spawn(async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            println!("Working...");
+        }
+    });
+    
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    handle.abort();  // 取消任务
+    
+    match handle.await {
+        Ok(_) => println!("Task completed"),
+        Err(e) if e.is_cancelled() => println!("Task was cancelled"),
+        Err(e) => println!("Task failed: {}", e),
+    }
+}
+
+// ==================== 检查点取消 ====================
+async fn long_operation(token: &CancellationToken) -> Result<(), Error> {
+    for i in 0..100 {
+        // 检查点
+        if token.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        
+        // 或者使用 select 在异步点检查
+        select! {
+            _ = async_work(i) => {},
+            _ = token.cancelled() => return Err(Error::Cancelled),
+        }
+    }
+    Ok(())
+}
+
+// ==================== Drop 时自动取消 ====================
+struct CancellableTask {
+    token: CancellationToken,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl CancellableTask {
+    fn new<F>(future: F) -> Self
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+        
+        let handle = tokio::spawn(async move {
+            select! {
+                _ = future => {},
+                _ = token_clone.cancelled() => {},
+            }
+        });
+        
+        Self { token, handle }
+    }
+    
+    fn cancel(&self) {
+        self.token.cancel();
+    }
+}
+
+impl Drop for CancellableTask {
+    fn drop(&mut self) {
+        self.token.cancel();
+    }
+}
+
+// ==================== 优雅关闭 ====================
+async fn graceful_shutdown(token: CancellationToken) {
+    // 等待取消信号
+    token.cancelled().await;
+    
+    println!("Shutdown signal received, cleaning up...");
+    
+    // 执行清理，但设置最大等待时间
+    let cleanup_result = tokio::time::timeout(
+        Duration::from_secs(30),
+        cleanup_resources()
+    ).await;
+    
+    match cleanup_result {
+        Ok(_) => println!("Cleanup completed"),
+        Err(_) => println!("Cleanup timed out, forcing shutdown"),
+    }
+}
+
+// 信号处理
+async fn run_with_shutdown() {
+    let token = CancellationToken::new();
+    
+    // 监听 Ctrl+C
+    let shutdown_token = token.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+        shutdown_token.cancel();
+    });
+    
+    // 运行主逻辑
+    select! {
+        _ = main_loop() => {},
+        _ = token.cancelled() => {
+            println!("Shutting down...");
+        }
+    }
+}
+```
+
 #### Semaphore - 信号量（并发数控制）
 
 **TypeScript**
@@ -13356,6 +13919,7 @@ impl AsyncSlidingWindowLimiter {
 | **Race** | 返回最快结果 | `Promise.race` | `asyncio.wait(FIRST_COMPLETED)` | `select` | `select!` |
 | **Any** | 返回首个成功 | `Promise.any` | 手动实现 | 手动实现 | 手动实现 |
 | **Timeout** | 超时控制 | `AbortSignal.timeout` | `asyncio.timeout` | `context.WithTimeout` | `tokio::time::timeout` |
+| **Cancel** | 取消操作 | `AbortController` | `Task.cancel()` | `context.WithCancel` | `CancellationToken` |
 | **Semaphore** | 并发数控制 | 手动/p-limit | `asyncio.Semaphore` | `channel`/`semaphore` | `tokio::sync::Semaphore` |
 | **Token Bucket** | 令牌桶限流 | 手动实现 | 手动实现 | `x/time/rate` | `governor` |
 | **Leaky Bucket** | 漏桶限流 | 手动实现 | 手动实现 | 手动实现 | 手动实现 |
