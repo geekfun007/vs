@@ -11845,6 +11845,1522 @@ crossbeam::select! {
 | Actor | 独立状态的消息处理单元 | Rust (actix) |
 | CSP | 通过通信共享内存 | Go (原生) |
 
+### 并发控制模式 (All/Race/Timeout/Semaphore/Bucket-Limit)
+
+#### All - 等待所有完成
+
+**TypeScript**
+```typescript
+// ==================== Promise.all ====================
+// 等待所有 Promise 完成，任一失败则整体失败
+const results = await Promise.all([
+    fetch('/api/users'),
+    fetch('/api/posts'),
+    fetch('/api/comments')
+]);
+
+// Promise.allSettled - 等待所有完成，不管成功失败
+const settled = await Promise.allSettled([
+    fetch('/api/users'),
+    fetch('/api/might-fail'),
+    fetch('/api/posts')
+]);
+// 结果: [{ status: 'fulfilled', value }, { status: 'rejected', reason }, ...]
+
+// 带类型的 Promise.all
+async function fetchAll<T>(urls: string[]): Promise<T[]> {
+    return Promise.all(urls.map(url => fetch(url).then(r => r.json())));
+}
+
+// 并发限制的 all
+async function allWithLimit<T>(
+    tasks: (() => Promise<T>)[],
+    limit: number
+): Promise<T[]> {
+    const results: T[] = [];
+    const executing: Promise<void>[] = [];
+    
+    for (const task of tasks) {
+        const p = task().then(result => {
+            results.push(result);
+        });
+        executing.push(p);
+        
+        if (executing.length >= limit) {
+            await Promise.race(executing);
+            executing.splice(executing.findIndex(e => e === p), 1);
+        }
+    }
+    await Promise.all(executing);
+    return results;
+}
+```
+
+**Python**
+```python
+import asyncio
+from typing import List, Any, Coroutine
+
+# ==================== asyncio.gather ====================
+# 等待所有协程完成
+async def fetch_all():
+    results = await asyncio.gather(
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments()
+    )
+    return results
+
+# return_exceptions=True 类似 allSettled
+async def fetch_all_settled():
+    results = await asyncio.gather(
+        fetch_users(),
+        might_fail(),
+        fetch_posts(),
+        return_exceptions=True  # 异常作为结果返回，不抛出
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            print(f"Failed: {r}")
+        else:
+            print(f"Success: {r}")
+
+# 使用 TaskGroup (Python 3.11+)
+async def fetch_with_taskgroup():
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(fetch_users())
+        task2 = tg.create_task(fetch_posts())
+        task3 = tg.create_task(fetch_comments())
+    # 所有任务完成后继续
+    return task1.result(), task2.result(), task3.result()
+
+# 带并发限制
+async def gather_with_limit(coros: List[Coroutine], limit: int):
+    semaphore = asyncio.Semaphore(limit)
+    
+    async def limited_coro(coro):
+        async with semaphore:
+            return await coro
+    
+    return await asyncio.gather(*[limited_coro(c) for c in coros])
+```
+
+**Go**
+```go
+// ==================== WaitGroup - 等待所有完成 ====================
+import (
+    "sync"
+    "golang.org/x/sync/errgroup"
+)
+
+// 基础 WaitGroup
+func fetchAll() {
+    var wg sync.WaitGroup
+    results := make([]string, 3)
+    
+    urls := []string{"/api/users", "/api/posts", "/api/comments"}
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()  // 等待所有完成
+    fmt.Println(results)
+}
+
+// errgroup - 带错误处理的等待组
+func fetchAllWithError() error {
+    g, ctx := errgroup.WithContext(context.Background())
+    
+    var users, posts, comments string
+    
+    g.Go(func() error {
+        var err error
+        users, err = fetchWithCtx(ctx, "/api/users")
+        return err
+    })
+    
+    g.Go(func() error {
+        var err error
+        posts, err = fetchWithCtx(ctx, "/api/posts")
+        return err
+    })
+    
+    g.Go(func() error {
+        var err error
+        comments, err = fetchWithCtx(ctx, "/api/comments")
+        return err
+    })
+    
+    if err := g.Wait(); err != nil {
+        return err  // 任一失败返回错误
+    }
+    
+    fmt.Println(users, posts, comments)
+    return nil
+}
+
+// 带并发限制的 errgroup
+func fetchAllLimited() error {
+    g, ctx := errgroup.WithContext(context.Background())
+    g.SetLimit(3)  // 最多 3 个并发
+    
+    urls := []string{...}
+    results := make([]string, len(urls))
+    
+    for i, url := range urls {
+        i, url := i, url
+        g.Go(func() error {
+            result, err := fetchWithCtx(ctx, url)
+            if err != nil {
+                return err
+            }
+            results[i] = result
+            return nil
+        })
+    }
+    
+    return g.Wait()
+}
+```
+
+**Rust**
+```rust
+use futures::future::{join_all, try_join_all};
+use tokio::task::JoinSet;
+
+// ==================== join_all - 等待所有完成 ====================
+async fn fetch_all() -> Vec<String> {
+    let futures = vec![
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments(),
+    ];
+    
+    // join_all 等待所有完成
+    join_all(futures).await
+}
+
+// try_join_all - 任一失败则返回错误
+async fn fetch_all_or_fail() -> Result<Vec<String>, Error> {
+    let futures = vec![
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments(),
+    ];
+    
+    try_join_all(futures).await
+}
+
+// tokio::join! 宏 - 固定数量的 futures
+async fn fetch_multiple() {
+    let (users, posts, comments) = tokio::join!(
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments()
+    );
+}
+
+// try_join! 宏 - 带错误处理
+async fn fetch_multiple_or_fail() -> Result<(), Error> {
+    let (users, posts, comments) = tokio::try_join!(
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments()
+    )?;
+    Ok(())
+}
+
+// JoinSet - 动态任务管理
+async fn fetch_dynamic(urls: Vec<String>) -> Vec<String> {
+    let mut set = JoinSet::new();
+    
+    for url in urls {
+        set.spawn(async move {
+            fetch(&url).await
+        });
+    }
+    
+    let mut results = Vec::new();
+    while let Some(res) = set.join_next().await {
+        if let Ok(value) = res {
+            results.push(value);
+        }
+    }
+    results
+}
+```
+
+#### Race - 返回最快的结果
+
+**TypeScript**
+```typescript
+// ==================== Promise.race ====================
+// 返回第一个完成的（成功或失败）
+const fastest = await Promise.race([
+    fetch('/api/server1/data'),
+    fetch('/api/server2/data'),
+    fetch('/api/server3/data')
+]);
+
+// Promise.any - 返回第一个成功的（忽略失败）
+const firstSuccess = await Promise.any([
+    fetch('/api/primary'),
+    fetch('/api/backup1'),
+    fetch('/api/backup2')
+]);
+// 全部失败才抛出 AggregateError
+
+// 实现带超时的 race
+function raceWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout')), ms);
+    });
+    return Promise.race([promise, timeout]);
+}
+
+// 多服务器竞速获取
+async function fetchFromFastestServer<T>(urls: string[]): Promise<T> {
+    const controller = new AbortController();
+    
+    try {
+        const result = await Promise.any(
+            urls.map(url => 
+                fetch(url, { signal: controller.signal })
+                    .then(r => r.json())
+            )
+        );
+        return result;
+    } finally {
+        controller.abort();  // 取消其他请求
+    }
+}
+```
+
+**Python**
+```python
+import asyncio
+
+# ==================== asyncio.wait - FIRST_COMPLETED ====================
+async def race_tasks():
+    tasks = [
+        asyncio.create_task(fetch_from_server1()),
+        asyncio.create_task(fetch_from_server2()),
+        asyncio.create_task(fetch_from_server3()),
+    ]
+    
+    # 等待第一个完成
+    done, pending = await asyncio.wait(
+        tasks,
+        return_when=asyncio.FIRST_COMPLETED
+    )
+    
+    # 取消其他任务
+    for task in pending:
+        task.cancel()
+    
+    # 获取结果
+    return done.pop().result()
+
+# 类似 Promise.any - 返回第一个成功的
+async def first_success(coros):
+    tasks = [asyncio.create_task(c) for c in coros]
+    
+    while tasks:
+        done, tasks = await asyncio.wait(
+            tasks,
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        for task in done:
+            if not task.exception():
+                # 取消剩余任务
+                for t in tasks:
+                    t.cancel()
+                return task.result()
+    
+    raise Exception("All tasks failed")
+
+# 使用 asyncio.wait_for 实现 race with timeout
+async def race_with_timeout(coros, timeout):
+    tasks = [asyncio.create_task(c) for c in coros]
+    try:
+        done, pending = await asyncio.wait(
+            tasks,
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        if done:
+            return done.pop().result()
+        raise asyncio.TimeoutError()
+    finally:
+        for task in pending:
+            task.cancel()
+```
+
+**Go**
+```go
+// ==================== select - 竞速选择 ====================
+func raceRequests(ctx context.Context) (string, error) {
+    ch := make(chan string, 3)
+    errCh := make(chan error, 3)
+    
+    // 启动多个请求
+    go func() {
+        result, err := fetchFromServer1(ctx)
+        if err != nil {
+            errCh <- err
+            return
+        }
+        ch <- result
+    }()
+    
+    go func() {
+        result, err := fetchFromServer2(ctx)
+        if err != nil {
+            errCh <- err
+            return
+        }
+        ch <- result
+    }()
+    
+    // 等待第一个结果
+    select {
+    case result := <-ch:
+        return result, nil
+    case err := <-errCh:
+        return "", err
+    case <-ctx.Done():
+        return "", ctx.Err()
+    }
+}
+
+// 使用 context 取消剩余请求
+func raceFetch(urls []string) (string, error) {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()  // 第一个完成后取消其他
+    
+    ch := make(chan string, len(urls))
+    
+    for _, url := range urls {
+        url := url
+        go func() {
+            if result, err := fetchWithCtx(ctx, url); err == nil {
+                select {
+                case ch <- result:
+                default:
+                }
+            }
+        }()
+    }
+    
+    select {
+    case result := <-ch:
+        return result, nil
+    case <-time.After(10 * time.Second):
+        return "", errors.New("all requests timed out")
+    }
+}
+```
+
+**Rust**
+```rust
+use tokio::select;
+use futures::future::select_all;
+
+// ==================== select! 宏 - 竞速 ====================
+async fn race_requests() -> Result<String, Error> {
+    select! {
+        result = fetch_from_server1() => result,
+        result = fetch_from_server2() => result,
+        result = fetch_from_server3() => result,
+    }
+}
+
+// select_all - 动态数量的 futures 竞速
+async fn race_dynamic(urls: Vec<String>) -> String {
+    let futures: Vec<_> = urls
+        .into_iter()
+        .map(|url| Box::pin(fetch(&url)))
+        .collect();
+    
+    let (result, _index, _remaining) = select_all(futures).await;
+    result
+}
+
+// 带取消的竞速
+async fn race_with_cancel(urls: Vec<String>) -> Result<String, Error> {
+    let token = CancellationToken::new();
+    let mut set = JoinSet::new();
+    
+    for url in urls {
+        let token = token.clone();
+        set.spawn(async move {
+            select! {
+                result = fetch(&url) => result,
+                _ = token.cancelled() => Err(Error::Cancelled),
+            }
+        });
+    }
+    
+    if let Some(Ok(Ok(result))) = set.join_next().await {
+        token.cancel();  // 取消其他任务
+        return Ok(result);
+    }
+    
+    Err(Error::AllFailed)
+}
+```
+
+#### Timeout - 超时控制
+
+**TypeScript**
+```typescript
+// ==================== 超时控制 ====================
+// 基础超时封装
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`Timeout after ${ms}ms`));
+        }, ms);
+        
+        promise
+            .then(resolve)
+            .catch(reject)
+            .finally(() => clearTimeout(timer));
+    });
+}
+
+// 使用 AbortController 实现可取消超时
+async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ms);
+    
+    try {
+        return await fetch(url, { signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+// AbortSignal.timeout (现代浏览器)
+async function fetchModern(url: string): Promise<Response> {
+    return fetch(url, { signal: AbortSignal.timeout(5000) });
+}
+
+// 重试 + 超时
+async function fetchWithRetry(
+    url: string,
+    options: { timeout: number; retries: number }
+): Promise<Response> {
+    for (let i = 0; i < options.retries; i++) {
+        try {
+            return await fetchWithTimeout(url, options.timeout);
+        } catch (err) {
+            if (i === options.retries - 1) throw err;
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));  // 退避
+        }
+    }
+    throw new Error('Unreachable');
+}
+```
+
+**Python**
+```python
+import asyncio
+from contextlib import asynccontextmanager
+
+# ==================== asyncio.timeout (Python 3.11+) ====================
+async def fetch_with_timeout():
+    async with asyncio.timeout(5.0):  # 5秒超时
+        return await fetch_data()
+
+# asyncio.wait_for (兼容旧版本)
+async def fetch_with_wait_for():
+    try:
+        result = await asyncio.wait_for(fetch_data(), timeout=5.0)
+        return result
+    except asyncio.TimeoutError:
+        print("Request timed out")
+        raise
+
+# 自定义超时上下文管理器
+@asynccontextmanager
+async def timeout_context(seconds: float):
+    task = asyncio.current_task()
+    loop = asyncio.get_running_loop()
+    
+    def cancel_task():
+        task.cancel()
+    
+    handle = loop.call_later(seconds, cancel_task)
+    try:
+        yield
+    finally:
+        handle.cancel()
+
+# 使用
+async def example():
+    async with timeout_context(5.0):
+        await long_running_operation()
+
+# 带重试的超时
+async def fetch_with_retry(url: str, timeout: float, retries: int):
+    for i in range(retries):
+        try:
+            async with asyncio.timeout(timeout):
+                return await fetch(url)
+        except asyncio.TimeoutError:
+            if i == retries - 1:
+                raise
+            await asyncio.sleep(1.0 * (i + 1))  # 指数退避
+```
+
+**Go**
+```go
+import (
+    "context"
+    "time"
+)
+
+// ==================== context.WithTimeout ====================
+func fetchWithTimeout(url string) (string, error) {
+    // 创建带超时的 context
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    
+    return fetchWithCtx(ctx, url)
+}
+
+// 在函数中检查超时
+func fetchWithCtx(ctx context.Context, url string) (string, error) {
+    // 创建请求
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return "", err
+    }
+    
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        return "", err  // 超时会返回 context deadline exceeded
+    }
+    defer resp.Body.Close()
+    
+    body, _ := io.ReadAll(resp.Body)
+    return string(body), nil
+}
+
+// select 实现超时
+func fetchWithSelectTimeout(url string) (string, error) {
+    ch := make(chan string, 1)
+    errCh := make(chan error, 1)
+    
+    go func() {
+        result, err := fetch(url)
+        if err != nil {
+            errCh <- err
+            return
+        }
+        ch <- result
+    }()
+    
+    select {
+    case result := <-ch:
+        return result, nil
+    case err := <-errCh:
+        return "", err
+    case <-time.After(5 * time.Second):
+        return "", errors.New("timeout")
+    }
+}
+
+// 带重试的超时
+func fetchWithRetry(url string, timeout time.Duration, retries int) (string, error) {
+    var lastErr error
+    
+    for i := 0; i < retries; i++ {
+        ctx, cancel := context.WithTimeout(context.Background(), timeout)
+        result, err := fetchWithCtx(ctx, url)
+        cancel()
+        
+        if err == nil {
+            return result, nil
+        }
+        
+        lastErr = err
+        time.Sleep(time.Duration(i+1) * time.Second)  // 退避
+    }
+    
+    return "", lastErr
+}
+```
+
+**Rust**
+```rust
+use tokio::time::{timeout, Duration};
+use std::time::Instant;
+
+// ==================== tokio::time::timeout ====================
+async fn fetch_with_timeout(url: &str) -> Result<String, Error> {
+    match timeout(Duration::from_secs(5), fetch(url)).await {
+        Ok(result) => result,
+        Err(_) => Err(Error::Timeout),
+    }
+}
+
+// 使用 select! 实现超时
+async fn fetch_with_select_timeout(url: &str) -> Result<String, Error> {
+    select! {
+        result = fetch(url) => result,
+        _ = tokio::time::sleep(Duration::from_secs(5)) => {
+            Err(Error::Timeout)
+        }
+    }
+}
+
+// 带取消令牌的超时
+async fn fetch_cancellable(url: &str, token: CancellationToken) -> Result<String, Error> {
+    select! {
+        result = fetch(url) => result,
+        _ = token.cancelled() => Err(Error::Cancelled),
+        _ = tokio::time::sleep(Duration::from_secs(5)) => {
+            Err(Error::Timeout)
+        }
+    }
+}
+
+// 带重试的超时
+async fn fetch_with_retry(
+    url: &str,
+    timeout_duration: Duration,
+    retries: u32,
+) -> Result<String, Error> {
+    let mut last_err = Error::Unknown;
+    
+    for i in 0..retries {
+        match timeout(timeout_duration, fetch(url)).await {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(e)) => last_err = e,
+            Err(_) => last_err = Error::Timeout,
+        }
+        
+        tokio::time::sleep(Duration::from_secs((i + 1) as u64)).await;
+    }
+    
+    Err(last_err)
+}
+
+// deadline 而非 duration
+async fn fetch_with_deadline(url: &str) -> Result<String, Error> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    tokio::time::timeout_at(deadline.into(), fetch(url)).await?
+}
+```
+
+#### Semaphore - 信号量（并发数控制）
+
+**TypeScript**
+```typescript
+// ==================== Semaphore 实现 ====================
+class Semaphore {
+    private permits: number;
+    private queue: (() => void)[] = [];
+    
+    constructor(permits: number) {
+        this.permits = permits;
+    }
+    
+    async acquire(): Promise<void> {
+        if (this.permits > 0) {
+            this.permits--;
+            return;
+        }
+        
+        return new Promise(resolve => {
+            this.queue.push(resolve);
+        });
+    }
+    
+    release(): void {
+        const next = this.queue.shift();
+        if (next) {
+            next();
+        } else {
+            this.permits++;
+        }
+    }
+    
+    async withPermit<T>(fn: () => Promise<T>): Promise<T> {
+        await this.acquire();
+        try {
+            return await fn();
+        } finally {
+            this.release();
+        }
+    }
+}
+
+// 使用 Semaphore 控制并发
+async function fetchAllLimited(urls: string[], limit: number): Promise<string[]> {
+    const semaphore = new Semaphore(limit);
+    
+    return Promise.all(
+        urls.map(url => 
+            semaphore.withPermit(() => fetch(url).then(r => r.text()))
+        )
+    );
+}
+
+// p-limit 库的使用（推荐）
+import pLimit from 'p-limit';
+
+const limit = pLimit(5);  // 最多 5 个并发
+const results = await Promise.all(
+    urls.map(url => limit(() => fetch(url)))
+);
+```
+
+**Python**
+```python
+import asyncio
+from contextlib import asynccontextmanager
+
+# ==================== asyncio.Semaphore ====================
+async def fetch_with_semaphore(urls: list[str], limit: int):
+    semaphore = asyncio.Semaphore(limit)
+    
+    async def fetch_one(url: str):
+        async with semaphore:  # 自动获取和释放
+            return await fetch(url)
+    
+    return await asyncio.gather(*[fetch_one(url) for url in urls])
+
+# BoundedSemaphore - 防止多次释放
+async def safe_semaphore_example():
+    sem = asyncio.BoundedSemaphore(3)
+    
+    async with sem:
+        await do_work()
+    
+    # sem.release()  # 额外释放会抛出 ValueError
+
+# 手动获取和释放
+async def manual_semaphore():
+    sem = asyncio.Semaphore(3)
+    
+    await sem.acquire()
+    try:
+        await do_work()
+    finally:
+        sem.release()
+
+# 线程版本
+import threading
+
+def threaded_work(urls: list[str], limit: int):
+    semaphore = threading.Semaphore(limit)
+    results = []
+    threads = []
+    
+    def worker(url: str):
+        with semaphore:
+            result = fetch_sync(url)
+            results.append(result)
+    
+    for url in urls:
+        t = threading.Thread(target=worker, args=(url,))
+        threads.append(t)
+        t.start()
+    
+    for t in threads:
+        t.join()
+    
+    return results
+```
+
+**Go**
+```go
+import (
+    "context"
+    "golang.org/x/sync/semaphore"
+)
+
+// ==================== 使用 channel 实现信号量 ====================
+func fetchWithSemaphore(urls []string, limit int) []string {
+    sem := make(chan struct{}, limit)
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            
+            sem <- struct{}{}        // 获取许可
+            defer func() { <-sem }() // 释放许可
+            
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()
+    return results
+}
+
+// 使用 golang.org/x/sync/semaphore 包
+func fetchWithWeightedSemaphore(urls []string, limit int64) ([]string, error) {
+    sem := semaphore.NewWeighted(limit)
+    ctx := context.Background()
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            
+            // 获取 1 个许可
+            if err := sem.Acquire(ctx, 1); err != nil {
+                return
+            }
+            defer sem.Release(1)
+            
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()
+    return results, nil
+}
+
+// 加权信号量 - 不同任务消耗不同许可
+func weightedTasks(tasks []Task) error {
+    sem := semaphore.NewWeighted(100)  // 总容量 100
+    ctx := context.Background()
+    
+    var wg sync.WaitGroup
+    for _, task := range tasks {
+        wg.Add(1)
+        go func(t Task) {
+            defer wg.Done()
+            
+            // 大任务消耗更多许可
+            weight := int64(t.Weight)
+            if err := sem.Acquire(ctx, weight); err != nil {
+                return
+            }
+            defer sem.Release(weight)
+            
+            t.Execute()
+        }(task)
+    }
+    
+    wg.Wait()
+    return nil
+}
+
+// 带超时的信号量获取
+func acquireWithTimeout(sem *semaphore.Weighted, timeout time.Duration) error {
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+    
+    return sem.Acquire(ctx, 1)
+}
+```
+
+**Rust**
+```rust
+use tokio::sync::{Semaphore, SemaphorePermit, OwnedSemaphorePermit};
+use std::sync::Arc;
+
+// ==================== tokio::sync::Semaphore ====================
+async fn fetch_with_semaphore(urls: Vec<String>, limit: usize) -> Vec<String> {
+    let semaphore = Arc::new(Semaphore::new(limit));
+    let mut handles = vec![];
+    
+    for url in urls {
+        let sem = semaphore.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+            fetch(&url).await
+        }));
+    }
+    
+    let mut results = vec![];
+    for handle in handles {
+        if let Ok(result) = handle.await {
+            results.push(result);
+        }
+    }
+    results
+}
+
+// OwnedSemaphorePermit - 所有权转移
+async fn fetch_owned_permit(
+    url: String,
+    semaphore: Arc<Semaphore>,
+) -> (String, OwnedSemaphorePermit) {
+    let permit = semaphore.clone().acquire_owned().await.unwrap();
+    let result = fetch(&url).await;
+    (result, permit)  // permit 可以被移动
+}
+
+// try_acquire - 非阻塞获取
+async fn try_fetch(url: &str, semaphore: &Semaphore) -> Option<String> {
+    match semaphore.try_acquire() {
+        Ok(_permit) => Some(fetch(url).await),
+        Err(_) => None,  // 没有可用许可
+    }
+}
+
+// 带超时的获取
+async fn acquire_with_timeout(
+    semaphore: &Semaphore,
+    timeout: Duration,
+) -> Result<SemaphorePermit, Error> {
+    match tokio::time::timeout(timeout, semaphore.acquire()).await {
+        Ok(Ok(permit)) => Ok(permit),
+        Ok(Err(_)) => Err(Error::SemaphoreClosed),
+        Err(_) => Err(Error::Timeout),
+    }
+}
+
+// 使用 std 的 Semaphore（同步）
+use std::sync::Semaphore as StdSemaphore;
+
+fn sync_fetch_limited(urls: Vec<String>, limit: usize) -> Vec<String> {
+    let sem = Arc::new(StdSemaphore::new(limit));
+    let results = Arc::new(Mutex::new(vec![]));
+    let mut handles = vec![];
+    
+    for url in urls {
+        let sem = sem.clone();
+        let results = results.clone();
+        handles.push(std::thread::spawn(move || {
+            let _permit = sem.acquire().unwrap();
+            let result = fetch_sync(&url);
+            results.lock().unwrap().push(result);
+        }));
+    }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    
+    Arc::try_unwrap(results).unwrap().into_inner().unwrap()
+}
+```
+
+#### Bucket-Limit - 令牌桶/漏桶限流
+
+**TypeScript**
+```typescript
+// ==================== 令牌桶 (Token Bucket) ====================
+class TokenBucket {
+    private tokens: number;
+    private lastRefill: number;
+    
+    constructor(
+        private capacity: number,      // 桶容量
+        private refillRate: number,    // 每秒填充速率
+    ) {
+        this.tokens = capacity;
+        this.lastRefill = Date.now();
+    }
+    
+    private refill(): void {
+        const now = Date.now();
+        const elapsed = (now - this.lastRefill) / 1000;
+        this.tokens = Math.min(this.capacity, this.tokens + elapsed * this.refillRate);
+        this.lastRefill = now;
+    }
+    
+    tryAcquire(tokens: number = 1): boolean {
+        this.refill();
+        if (this.tokens >= tokens) {
+            this.tokens -= tokens;
+            return true;
+        }
+        return false;
+    }
+    
+    async acquire(tokens: number = 1): Promise<void> {
+        while (!this.tryAcquire(tokens)) {
+            await new Promise(r => setTimeout(r, 100));
+        }
+    }
+}
+
+// 使用令牌桶限流 API 调用
+const bucket = new TokenBucket(10, 2);  // 容量10，每秒补充2个
+
+async function rateLimitedFetch(url: string): Promise<Response> {
+    await bucket.acquire();
+    return fetch(url);
+}
+
+// ==================== 漏桶 (Leaky Bucket) ====================
+class LeakyBucket {
+    private queue: (() => void)[] = [];
+    private processing = false;
+    
+    constructor(
+        private ratePerSecond: number  // 每秒处理数量
+    ) {}
+    
+    async add<T>(task: () => Promise<T>): Promise<T> {
+        return new Promise((resolve, reject) => {
+            this.queue.push(async () => {
+                try {
+                    resolve(await task());
+                } catch (e) {
+                    reject(e);
+                }
+            });
+            this.process();
+        });
+    }
+    
+    private async process(): Promise<void> {
+        if (this.processing) return;
+        this.processing = true;
+        
+        while (this.queue.length > 0) {
+            const task = this.queue.shift()!;
+            await task();
+            await new Promise(r => 
+                setTimeout(r, 1000 / this.ratePerSecond)
+            );
+        }
+        
+        this.processing = false;
+    }
+}
+
+// 滑动窗口限流
+class SlidingWindowRateLimiter {
+    private requests: number[] = [];
+    
+    constructor(
+        private windowMs: number,
+        private maxRequests: number
+    ) {}
+    
+    tryAcquire(): boolean {
+        const now = Date.now();
+        this.requests = this.requests.filter(t => now - t < this.windowMs);
+        
+        if (this.requests.length < this.maxRequests) {
+            this.requests.push(now);
+            return true;
+        }
+        return false;
+    }
+}
+```
+
+**Python**
+```python
+import asyncio
+import time
+from collections import deque
+from dataclasses import dataclass
+
+# ==================== 令牌桶 (Token Bucket) ====================
+class TokenBucket:
+    def __init__(self, capacity: int, refill_rate: float):
+        self.capacity = capacity
+        self.refill_rate = refill_rate  # tokens per second
+        self.tokens = capacity
+        self.last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+    
+    def _refill(self):
+        now = time.monotonic()
+        elapsed = now - self.last_refill
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+        self.last_refill = now
+    
+    async def acquire(self, tokens: int = 1):
+        async with self._lock:
+            while True:
+                self._refill()
+                if self.tokens >= tokens:
+                    self.tokens -= tokens
+                    return
+                # 等待足够的 token
+                wait_time = (tokens - self.tokens) / self.refill_rate
+                await asyncio.sleep(wait_time)
+
+# 使用令牌桶
+bucket = TokenBucket(capacity=10, refill_rate=2.0)
+
+async def rate_limited_fetch(url: str):
+    await bucket.acquire()
+    return await fetch(url)
+
+# ==================== 漏桶 (Leaky Bucket) ====================
+class LeakyBucket:
+    def __init__(self, rate_per_second: float):
+        self.rate = rate_per_second
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self._processing = False
+    
+    async def add(self, coro):
+        future = asyncio.Future()
+        await self.queue.put((coro, future))
+        asyncio.create_task(self._process())
+        return await future
+    
+    async def _process(self):
+        if self._processing:
+            return
+        self._processing = True
+        
+        while not self.queue.empty():
+            coro, future = await self.queue.get()
+            try:
+                result = await coro
+                future.set_result(result)
+            except Exception as e:
+                future.set_exception(e)
+            await asyncio.sleep(1.0 / self.rate)
+        
+        self._processing = False
+
+# ==================== 滑动窗口限流 ====================
+class SlidingWindowLimiter:
+    def __init__(self, window_seconds: float, max_requests: int):
+        self.window = window_seconds
+        self.max_requests = max_requests
+        self.requests: deque = deque()
+        self._lock = asyncio.Lock()
+    
+    async def acquire(self) -> bool:
+        async with self._lock:
+            now = time.monotonic()
+            # 移除窗口外的请求
+            while self.requests and now - self.requests[0] > self.window:
+                self.requests.popleft()
+            
+            if len(self.requests) < self.max_requests:
+                self.requests.append(now)
+                return True
+            return False
+    
+    async def wait_and_acquire(self):
+        while not await self.acquire():
+            await asyncio.sleep(0.1)
+```
+
+**Go**
+```go
+import (
+    "context"
+    "sync"
+    "time"
+    "golang.org/x/time/rate"
+)
+
+// ==================== 使用 golang.org/x/time/rate ====================
+func rateLimitedFetch(urls []string) []string {
+    // 每秒 10 个请求，突发最多 5 个
+    limiter := rate.NewLimiter(rate.Limit(10), 5)
+    
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            
+            // 等待获取令牌
+            if err := limiter.Wait(context.Background()); err != nil {
+                return
+            }
+            
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()
+    return results
+}
+
+// 预留令牌
+func reserveExample(limiter *rate.Limiter) {
+    r := limiter.Reserve()
+    if !r.OK() {
+        return  // 无法预留
+    }
+    
+    delay := r.Delay()
+    time.Sleep(delay)  // 等待
+    
+    // 执行操作
+}
+
+// 尝试获取（非阻塞）
+func tryAcquire(limiter *rate.Limiter) bool {
+    return limiter.Allow()
+}
+
+// ==================== 自定义令牌桶 ====================
+type TokenBucket struct {
+    capacity   int64
+    tokens     int64
+    refillRate float64  // per second
+    lastRefill time.Time
+    mu         sync.Mutex
+}
+
+func NewTokenBucket(capacity int64, refillRate float64) *TokenBucket {
+    return &TokenBucket{
+        capacity:   capacity,
+        tokens:     capacity,
+        refillRate: refillRate,
+        lastRefill: time.Now(),
+    }
+}
+
+func (b *TokenBucket) refill() {
+    now := time.Now()
+    elapsed := now.Sub(b.lastRefill).Seconds()
+    b.tokens = min(b.capacity, b.tokens+int64(elapsed*b.refillRate))
+    b.lastRefill = now
+}
+
+func (b *TokenBucket) Acquire(n int64) {
+    b.mu.Lock()
+    defer b.mu.Unlock()
+    
+    for {
+        b.refill()
+        if b.tokens >= n {
+            b.tokens -= n
+            return
+        }
+        
+        // 计算等待时间
+        needed := float64(n - b.tokens)
+        waitTime := time.Duration(needed/b.refillRate) * time.Second
+        b.mu.Unlock()
+        time.Sleep(waitTime)
+        b.mu.Lock()
+    }
+}
+
+// ==================== 滑动窗口限流 ====================
+type SlidingWindowLimiter struct {
+    window      time.Duration
+    maxRequests int
+    requests    []time.Time
+    mu          sync.Mutex
+}
+
+func NewSlidingWindowLimiter(window time.Duration, max int) *SlidingWindowLimiter {
+    return &SlidingWindowLimiter{
+        window:      window,
+        maxRequests: max,
+        requests:    make([]time.Time, 0),
+    }
+}
+
+func (l *SlidingWindowLimiter) Allow() bool {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+    
+    now := time.Now()
+    cutoff := now.Add(-l.window)
+    
+    // 移除过期请求
+    valid := l.requests[:0]
+    for _, t := range l.requests {
+        if t.After(cutoff) {
+            valid = append(valid, t)
+        }
+    }
+    l.requests = valid
+    
+    if len(l.requests) < l.maxRequests {
+        l.requests = append(l.requests, now)
+        return true
+    }
+    return false
+}
+```
+
+**Rust**
+```rust
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use std::time::{Duration, Instant};
+use std::collections::VecDeque;
+
+// ==================== 令牌桶 (Token Bucket) ====================
+pub struct TokenBucket {
+    capacity: f64,
+    tokens: f64,
+    refill_rate: f64,  // tokens per second
+    last_refill: Instant,
+}
+
+impl TokenBucket {
+    pub fn new(capacity: f64, refill_rate: f64) -> Self {
+        Self {
+            capacity,
+            tokens: capacity,
+            refill_rate,
+            last_refill: Instant::now(),
+        }
+    }
+    
+    fn refill(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
+        self.tokens = (self.tokens + elapsed * self.refill_rate).min(self.capacity);
+        self.last_refill = now;
+    }
+    
+    pub fn try_acquire(&mut self, tokens: f64) -> bool {
+        self.refill();
+        if self.tokens >= tokens {
+            self.tokens -= tokens;
+            true
+        } else {
+            false
+        }
+    }
+    
+    pub async fn acquire(&mut self, tokens: f64) {
+        loop {
+            self.refill();
+            if self.tokens >= tokens {
+                self.tokens -= tokens;
+                return;
+            }
+            
+            let wait_time = (tokens - self.tokens) / self.refill_rate;
+            tokio::time::sleep(Duration::from_secs_f64(wait_time)).await;
+        }
+    }
+}
+
+// 线程安全版本
+pub struct AsyncTokenBucket {
+    inner: Arc<Mutex<TokenBucket>>,
+}
+
+impl AsyncTokenBucket {
+    pub fn new(capacity: f64, refill_rate: f64) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(TokenBucket::new(capacity, refill_rate))),
+        }
+    }
+    
+    pub async fn acquire(&self, tokens: f64) {
+        loop {
+            {
+                let mut bucket = self.inner.lock().await;
+                if bucket.try_acquire(tokens) {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+}
+
+// ==================== 使用 governor crate ====================
+use governor::{Quota, RateLimiter};
+use std::num::NonZeroU32;
+
+async fn rate_limited_fetch(urls: Vec<String>) -> Vec<String> {
+    // 每秒 10 个请求
+    let limiter = RateLimiter::direct(Quota::per_second(NonZeroU32::new(10).unwrap()));
+    
+    let mut results = Vec::new();
+    for url in urls {
+        limiter.until_ready().await;
+        results.push(fetch(&url).await);
+    }
+    results
+}
+
+// ==================== 滑动窗口限流 ====================
+pub struct SlidingWindowLimiter {
+    window: Duration,
+    max_requests: usize,
+    requests: VecDeque<Instant>,
+}
+
+impl SlidingWindowLimiter {
+    pub fn new(window: Duration, max_requests: usize) -> Self {
+        Self {
+            window,
+            max_requests,
+            requests: VecDeque::new(),
+        }
+    }
+    
+    pub fn allow(&mut self) -> bool {
+        let now = Instant::now();
+        let cutoff = now - self.window;
+        
+        // 移除过期请求
+        while let Some(front) = self.requests.front() {
+            if *front < cutoff {
+                self.requests.pop_front();
+            } else {
+                break;
+            }
+        }
+        
+        if self.requests.len() < self.max_requests {
+            self.requests.push_back(now);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+// 异步版本
+pub struct AsyncSlidingWindowLimiter {
+    inner: Arc<Mutex<SlidingWindowLimiter>>,
+}
+
+impl AsyncSlidingWindowLimiter {
+    pub async fn wait_and_acquire(&self) {
+        loop {
+            if self.inner.lock().await.allow() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+}
+```
+
+### 并发控制模式对比
+
+| 模式 | 用途 | TypeScript | Python | Go | Rust |
+|------|------|------------|--------|-----|------|
+| **All** | 等待所有任务完成 | `Promise.all` | `asyncio.gather` | `sync.WaitGroup` | `join_all` |
+| **AllSettled** | 等待所有（含失败） | `Promise.allSettled` | `gather(return_exceptions=True)` | `errgroup` | `JoinSet` |
+| **Race** | 返回最快结果 | `Promise.race` | `asyncio.wait(FIRST_COMPLETED)` | `select` | `select!` |
+| **Any** | 返回首个成功 | `Promise.any` | 手动实现 | 手动实现 | 手动实现 |
+| **Timeout** | 超时控制 | `AbortSignal.timeout` | `asyncio.timeout` | `context.WithTimeout` | `tokio::time::timeout` |
+| **Semaphore** | 并发数控制 | 手动/p-limit | `asyncio.Semaphore` | `channel`/`semaphore` | `tokio::sync::Semaphore` |
+| **Token Bucket** | 令牌桶限流 | 手动实现 | 手动实现 | `x/time/rate` | `governor` |
+| **Leaky Bucket** | 漏桶限流 | 手动实现 | 手动实现 | 手动实现 | 手动实现 |
+| **Sliding Window** | 滑动窗口限流 | 手动实现 | 手动实现 | 手动实现 | 手动实现 |
+
 ---
 
 ## ❓ 三元表达式
