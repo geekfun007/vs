@@ -14496,6 +14496,956 @@ impl AsyncSlidingWindowLimiter {
 | **Leaky Bucket** | 漏桶限流 | 手动实现 | 手动实现 | 手动实现 | 手动实现 |
 | **Sliding Window** | 滑动窗口限流 | 手动实现 | 手动实现 | 手动实现 | 手动实现 |
 
+### 并发数据传递
+
+#### 数据传递方式概览
+
+| 方式 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 消息传递 | `postMessage` | `Queue` | `chan` | `mpsc/broadcast` |
+| 共享内存 | `SharedArrayBuffer` | `multiprocessing.Value` | `sync.Mutex` | `Arc<Mutex<T>>` |
+| 原子操作 | `Atomics` | `threading.Lock` | `atomic` | `std::sync::atomic` |
+| 返回值 | `Promise` | `Future` | 返回值 | `JoinHandle` |
+| 回调 | 回调函数 | 回调函数 | 函数参数 | 闭包 |
+
+#### TypeScript 并发数据传递
+
+```typescript
+// ==================== Promise 链传递 ====================
+async function pipeline() {
+    const data = await fetchData();
+    const processed = await processData(data);
+    const result = await saveData(processed);
+    return result;
+}
+
+// Promise 结果收集
+const results = await Promise.all([
+    fetchUsers(),
+    fetchPosts(),
+    fetchComments()
+]);
+const [users, posts, comments] = results;
+
+// ==================== 回调传递 ====================
+function fetchWithCallback(
+    url: string,
+    onSuccess: (data: any) => void,
+    onError: (err: Error) => void
+) {
+    fetch(url)
+        .then(res => res.json())
+        .then(onSuccess)
+        .catch(onError);
+}
+
+// ==================== EventEmitter 模式 ====================
+import { EventEmitter } from 'events';
+
+class DataProcessor extends EventEmitter {
+    process(data: any) {
+        this.emit('start', data);
+        const result = transform(data);
+        this.emit('complete', result);
+        return result;
+    }
+}
+
+const processor = new DataProcessor();
+processor.on('complete', (result) => console.log(result));
+
+// ==================== Worker 线程通信 ====================
+// main.ts
+const worker = new Worker('./worker.js');
+
+// 发送数据到 Worker
+worker.postMessage({ type: 'process', data: largeArray });
+
+// 接收 Worker 结果
+worker.onmessage = (event) => {
+    const { type, result } = event.data;
+    if (type === 'result') {
+        console.log('Processed:', result);
+    }
+};
+
+// worker.ts
+self.onmessage = (event) => {
+    const { type, data } = event.data;
+    if (type === 'process') {
+        const result = heavyComputation(data);
+        self.postMessage({ type: 'result', result });
+    }
+};
+
+// ==================== SharedArrayBuffer 共享内存 ====================
+// 创建共享缓冲区
+const sharedBuffer = new SharedArrayBuffer(1024);
+const sharedArray = new Int32Array(sharedBuffer);
+
+// 主线程
+worker.postMessage({ buffer: sharedBuffer });
+sharedArray[0] = 42;  // 直接修改共享内存
+
+// Worker 线程
+self.onmessage = (event) => {
+    const view = new Int32Array(event.data.buffer);
+    console.log(view[0]);  // 42 - 读取共享内存
+    Atomics.add(view, 0, 1);  // 原子操作
+};
+
+// ==================== Atomics 原子操作 ====================
+const sab = new SharedArrayBuffer(4);
+const arr = new Int32Array(sab);
+
+// 原子读写
+Atomics.store(arr, 0, 123);
+Atomics.load(arr, 0);  // 123
+
+// 原子加减
+Atomics.add(arr, 0, 10);      // 返回旧值，arr[0] += 10
+Atomics.sub(arr, 0, 5);       // 返回旧值，arr[0] -= 5
+
+// 比较并交换
+Atomics.compareExchange(arr, 0, 128, 200);  // 如果是128则改为200
+
+// 等待/通知 (线程同步)
+// Worker 1: 等待
+Atomics.wait(arr, 0, 0);  // 阻塞直到 arr[0] != 0
+
+// Worker 2: 通知
+Atomics.store(arr, 0, 1);
+Atomics.notify(arr, 0, 1);  // 唤醒一个等待者
+
+// ==================== MessageChannel ====================
+const channel = new MessageChannel();
+const port1 = channel.port1;
+const port2 = channel.port2;
+
+// 发送到另一个上下文
+worker.postMessage({ port: port2 }, [port2]);
+
+// 通过 port 通信
+port1.onmessage = (e) => console.log(e.data);
+port1.postMessage('Hello from main');
+
+// ==================== BroadcastChannel ====================
+// 跨标签页/Worker 广播
+const broadcast = new BroadcastChannel('app-channel');
+
+// 发送
+broadcast.postMessage({ type: 'update', data: newData });
+
+// 接收 (所有订阅者)
+broadcast.onmessage = (event) => {
+    console.log('Received:', event.data);
+};
+
+// ==================== 流式数据传递 ====================
+async function* streamData(): AsyncGenerator<number> {
+    for (let i = 0; i < 100; i++) {
+        yield await fetchChunk(i);
+    }
+}
+
+// 消费流
+for await (const chunk of streamData()) {
+    process(chunk);
+}
+
+// ReadableStream
+const stream = new ReadableStream({
+    async start(controller) {
+        for (let i = 0; i < 10; i++) {
+            controller.enqueue(i);
+            await delay(100);
+        }
+        controller.close();
+    }
+});
+
+const reader = stream.getReader();
+while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    console.log(value);
+}
+```
+
+#### Python 并发数据传递
+
+```python
+import asyncio
+import queue
+import threading
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+# ==================== asyncio.Queue ====================
+async def producer(q: asyncio.Queue):
+    for i in range(10):
+        await q.put(i)
+        print(f"Produced: {i}")
+        await asyncio.sleep(0.1)
+    await q.put(None)  # 结束信号
+
+async def consumer(q: asyncio.Queue):
+    while True:
+        item = await q.get()
+        if item is None:
+            break
+        print(f"Consumed: {item}")
+        q.task_done()
+
+async def main():
+    q = asyncio.Queue(maxsize=5)  # 有界队列
+    await asyncio.gather(
+        producer(q),
+        consumer(q)
+    )
+
+# ==================== threading.Queue ====================
+def threaded_producer(q: queue.Queue):
+    for i in range(10):
+        q.put(i)
+    q.put(None)
+
+def threaded_consumer(q: queue.Queue):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(f"Got: {item}")
+        q.task_done()
+
+q = queue.Queue()
+producer_thread = threading.Thread(target=threaded_producer, args=(q,))
+consumer_thread = threading.Thread(target=threaded_consumer, args=(q,))
+
+# 优先队列
+pq = queue.PriorityQueue()
+pq.put((1, "high priority"))
+pq.put((10, "low priority"))
+
+# ==================== multiprocessing 进程间通信 ====================
+# Queue
+def mp_producer(q: multiprocessing.Queue):
+    for i in range(10):
+        q.put(i)
+    q.put(None)
+
+def mp_consumer(q: multiprocessing.Queue):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(f"Process got: {item}")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    p1 = multiprocessing.Process(target=mp_producer, args=(q,))
+    p2 = multiprocessing.Process(target=mp_consumer, args=(q,))
+    p1.start()
+    p2.start()
+
+# Pipe - 双向通信
+def pipe_sender(conn):
+    conn.send("Hello")
+    conn.send([1, 2, 3])
+    conn.close()
+
+def pipe_receiver(conn):
+    print(conn.recv())  # "Hello"
+    print(conn.recv())  # [1, 2, 3]
+
+parent_conn, child_conn = multiprocessing.Pipe()
+
+# ==================== 共享内存 ====================
+# Value - 单个值
+counter = multiprocessing.Value('i', 0)  # 'i' = int
+
+def increment(counter):
+    for _ in range(1000):
+        with counter.get_lock():
+            counter.value += 1
+
+# Array - 数组
+shared_array = multiprocessing.Array('d', [0.0] * 10)  # 'd' = double
+
+# shared_memory (Python 3.8+)
+from multiprocessing import shared_memory
+
+# 创建共享内存
+shm = shared_memory.SharedMemory(create=True, size=1024)
+buffer = shm.buf
+
+# 写入
+buffer[0:5] = b'Hello'
+
+# 另一个进程访问
+shm2 = shared_memory.SharedMemory(name=shm.name)
+print(bytes(shm2.buf[0:5]))  # b'Hello'
+
+# 清理
+shm.close()
+shm.unlink()
+
+# ==================== Manager - 共享复杂对象 ====================
+manager = multiprocessing.Manager()
+shared_dict = manager.dict()
+shared_list = manager.list()
+
+def worker(d, l, key, value):
+    d[key] = value
+    l.append(value)
+
+# ==================== Future 结果获取 ====================
+with ThreadPoolExecutor(max_workers=4) as executor:
+    # submit 返回 Future
+    future = executor.submit(heavy_task, arg1, arg2)
+    
+    # 获取结果 (阻塞)
+    result = future.result(timeout=10)
+    
+    # 检查状态
+    future.done()       # 是否完成
+    future.cancelled()  # 是否取消
+    future.exception()  # 获取异常
+
+# map 批量获取结果
+with ProcessPoolExecutor() as executor:
+    results = list(executor.map(process, items))
+
+# as_completed 按完成顺序获取
+from concurrent.futures import as_completed
+
+futures = [executor.submit(task, i) for i in range(10)]
+for future in as_completed(futures):
+    result = future.result()
+    print(result)
+
+# ==================== 回调函数 ====================
+def on_complete(future):
+    print(f"Result: {future.result()}")
+
+future = executor.submit(task)
+future.add_done_callback(on_complete)
+
+# ==================== asyncio 事件 ====================
+event = asyncio.Event()
+
+async def waiter():
+    print("Waiting...")
+    await event.wait()
+    print("Event fired!")
+
+async def setter():
+    await asyncio.sleep(1)
+    event.set()
+
+# Condition
+condition = asyncio.Condition()
+
+async def consumer():
+    async with condition:
+        await condition.wait()
+        # 处理数据
+
+async def producer():
+    async with condition:
+        # 准备数据
+        condition.notify_all()
+```
+
+#### Go 并发数据传递
+
+```go
+// ==================== Channel 基础 ====================
+// 无缓冲 channel (同步)
+ch := make(chan int)
+
+// 有缓冲 channel (异步)
+buffered := make(chan int, 10)
+
+// 发送和接收
+go func() {
+    ch <- 42  // 发送
+}()
+value := <-ch  // 接收
+
+// 关闭 channel
+close(ch)
+
+// 检查是否关闭
+value, ok := <-ch
+if !ok {
+    fmt.Println("Channel closed")
+}
+
+// ==================== Channel 方向 ====================
+// 只发送
+func producer(out chan<- int) {
+    for i := 0; i < 10; i++ {
+        out <- i
+    }
+    close(out)
+}
+
+// 只接收
+func consumer(in <-chan int) {
+    for value := range in {
+        fmt.Println(value)
+    }
+}
+
+// ==================== 生产者-消费者模式 ====================
+func main() {
+    ch := make(chan int, 5)
+    
+    // 生产者
+    go func() {
+        for i := 0; i < 10; i++ {
+            ch <- i
+            fmt.Printf("Produced: %d\n", i)
+        }
+        close(ch)
+    }()
+    
+    // 消费者
+    for value := range ch {
+        fmt.Printf("Consumed: %d\n", value)
+    }
+}
+
+// ==================== select 多路复用 ====================
+func main() {
+    ch1 := make(chan string)
+    ch2 := make(chan string)
+    
+    go func() {
+        time.Sleep(1 * time.Second)
+        ch1 <- "one"
+    }()
+    
+    go func() {
+        time.Sleep(2 * time.Second)
+        ch2 <- "two"
+    }()
+    
+    for i := 0; i < 2; i++ {
+        select {
+        case msg1 := <-ch1:
+            fmt.Println("Received", msg1)
+        case msg2 := <-ch2:
+            fmt.Println("Received", msg2)
+        case <-time.After(3 * time.Second):
+            fmt.Println("Timeout")
+        }
+    }
+}
+
+// 非阻塞 select
+select {
+case msg := <-ch:
+    fmt.Println(msg)
+default:
+    fmt.Println("No message")
+}
+
+// ==================== Fan-out / Fan-in ====================
+// Fan-out: 一个 channel 分发给多个 worker
+func fanOut(input <-chan int, workers int) []<-chan int {
+    outputs := make([]<-chan int, workers)
+    for i := 0; i < workers; i++ {
+        outputs[i] = worker(input)
+    }
+    return outputs
+}
+
+func worker(input <-chan int) <-chan int {
+    output := make(chan int)
+    go func() {
+        defer close(output)
+        for n := range input {
+            output <- process(n)
+        }
+    }()
+    return output
+}
+
+// Fan-in: 多个 channel 合并为一个
+func fanIn(inputs ...<-chan int) <-chan int {
+    output := make(chan int)
+    var wg sync.WaitGroup
+    
+    for _, ch := range inputs {
+        wg.Add(1)
+        go func(c <-chan int) {
+            defer wg.Done()
+            for n := range c {
+                output <- n
+            }
+        }(ch)
+    }
+    
+    go func() {
+        wg.Wait()
+        close(output)
+    }()
+    
+    return output
+}
+
+// ==================== Pipeline 模式 ====================
+func gen(nums ...int) <-chan int {
+    out := make(chan int)
+    go func() {
+        for _, n := range nums {
+            out <- n
+        }
+        close(out)
+    }()
+    return out
+}
+
+func square(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        for n := range in {
+            out <- n * n
+        }
+        close(out)
+    }()
+    return out
+}
+
+func double(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        for n := range in {
+            out <- n * 2
+        }
+        close(out)
+    }()
+    return out
+}
+
+// 使用
+func main() {
+    // gen -> square -> double
+    for n := range double(square(gen(1, 2, 3, 4))) {
+        fmt.Println(n)  // 2, 8, 18, 32
+    }
+}
+
+// ==================== 共享内存 (Mutex) ====================
+type SafeCounter struct {
+    mu    sync.Mutex
+    value int
+}
+
+func (c *SafeCounter) Inc() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.value++
+}
+
+func (c *SafeCounter) Value() int {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    return c.value
+}
+
+// RWMutex 读写锁
+type SafeMap struct {
+    mu sync.RWMutex
+    m  map[string]int
+}
+
+func (sm *SafeMap) Get(key string) int {
+    sm.mu.RLock()  // 读锁
+    defer sm.mu.RUnlock()
+    return sm.m[key]
+}
+
+func (sm *SafeMap) Set(key string, value int) {
+    sm.mu.Lock()   // 写锁
+    defer sm.mu.Unlock()
+    sm.m[key] = value
+}
+
+// ==================== sync.Map ====================
+var m sync.Map
+
+// 存储
+m.Store("key", "value")
+
+// 读取
+value, ok := m.Load("key")
+
+// 读取或存储
+actual, loaded := m.LoadOrStore("key", "default")
+
+// 删除
+m.Delete("key")
+
+// 遍历
+m.Range(func(key, value any) bool {
+    fmt.Printf("%v: %v\n", key, value)
+    return true  // 继续遍历
+})
+
+// ==================== atomic 原子操作 ====================
+var counter int64
+
+// 原子加
+atomic.AddInt64(&counter, 1)
+
+// 原子读写
+atomic.StoreInt64(&counter, 100)
+value := atomic.LoadInt64(&counter)
+
+// 比较并交换
+swapped := atomic.CompareAndSwapInt64(&counter, 100, 200)
+
+// atomic.Value 存储任意类型
+var config atomic.Value
+config.Store(map[string]string{"key": "value"})
+cfg := config.Load().(map[string]string)
+
+// ==================== sync.Pool 对象池 ====================
+var bufferPool = sync.Pool{
+    New: func() any {
+        return make([]byte, 1024)
+    },
+}
+
+// 获取
+buf := bufferPool.Get().([]byte)
+
+// 使用后归还
+bufferPool.Put(buf)
+
+// ==================== Context 传递数据 ====================
+type key string
+
+func main() {
+    ctx := context.Background()
+    ctx = context.WithValue(ctx, key("userID"), "12345")
+    
+    processRequest(ctx)
+}
+
+func processRequest(ctx context.Context) {
+    userID := ctx.Value(key("userID")).(string)
+    fmt.Println("User:", userID)
+}
+```
+
+#### Rust 并发数据传递
+
+```rust
+use std::sync::{Arc, Mutex, RwLock, mpsc, atomic::{AtomicUsize, Ordering}};
+use std::thread;
+use tokio::sync::{mpsc as tokio_mpsc, broadcast, oneshot, watch};
+
+// ==================== std::sync::mpsc (多生产者单消费者) ====================
+fn mpsc_example() {
+    let (tx, rx) = mpsc::channel();
+    
+    // 多个生产者
+    for i in 0..3 {
+        let tx_clone = tx.clone();
+        thread::spawn(move || {
+            tx_clone.send(format!("Message from {}", i)).unwrap();
+        });
+    }
+    drop(tx);  // 关闭原始发送端
+    
+    // 单个消费者
+    for received in rx {
+        println!("Got: {}", received);
+    }
+}
+
+// 同步 channel (有界)
+fn sync_channel_example() {
+    let (tx, rx) = mpsc::sync_channel(2);  // 缓冲区大小 2
+    
+    thread::spawn(move || {
+        tx.send(1).unwrap();
+        tx.send(2).unwrap();
+        tx.send(3).unwrap();  // 阻塞，直到有空间
+    });
+    
+    for val in rx {
+        println!("{}", val);
+    }
+}
+
+// ==================== tokio::sync::mpsc (异步) ====================
+async fn tokio_mpsc_example() {
+    let (tx, mut rx) = tokio_mpsc::channel(100);
+    
+    // 生产者
+    tokio::spawn(async move {
+        for i in 0..10 {
+            tx.send(i).await.unwrap();
+        }
+    });
+    
+    // 消费者
+    while let Some(value) = rx.recv().await {
+        println!("Received: {}", value);
+    }
+}
+
+// ==================== broadcast (多生产者多消费者) ====================
+async fn broadcast_example() {
+    let (tx, mut rx1) = broadcast::channel(16);
+    let mut rx2 = tx.subscribe();
+    
+    tokio::spawn(async move {
+        while let Ok(value) = rx1.recv().await {
+            println!("Receiver 1: {}", value);
+        }
+    });
+    
+    tokio::spawn(async move {
+        while let Ok(value) = rx2.recv().await {
+            println!("Receiver 2: {}", value);
+        }
+    });
+    
+    tx.send("Hello").unwrap();
+    tx.send("World").unwrap();
+}
+
+// ==================== oneshot (单次传递) ====================
+async fn oneshot_example() {
+    let (tx, rx) = oneshot::channel();
+    
+    tokio::spawn(async move {
+        // 执行计算
+        let result = expensive_computation().await;
+        tx.send(result).unwrap();
+    });
+    
+    // 等待结果
+    let result = rx.await.unwrap();
+    println!("Result: {}", result);
+}
+
+// ==================== watch (单生产者多消费者，最新值) ====================
+async fn watch_example() {
+    let (tx, mut rx) = watch::channel("initial");
+    
+    tokio::spawn(async move {
+        loop {
+            // 等待值改变
+            rx.changed().await.unwrap();
+            println!("Value changed to: {}", *rx.borrow());
+        }
+    });
+    
+    tx.send("updated").unwrap();
+    tx.send("final").unwrap();
+}
+
+// ==================== Arc<Mutex<T>> 共享可变状态 ====================
+fn shared_state_example() {
+    let counter = Arc::new(Mutex::new(0));
+    let mut handles = vec![];
+    
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        let handle = thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    
+    println!("Result: {}", *counter.lock().unwrap());
+}
+
+// 异步版本
+async fn async_shared_state() {
+    let counter = Arc::new(tokio::sync::Mutex::new(0));
+    
+    let mut handles = vec![];
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        handles.push(tokio::spawn(async move {
+            let mut num = counter.lock().await;
+            *num += 1;
+        }));
+    }
+    
+    for handle in handles {
+        handle.await.unwrap();
+    }
+}
+
+// ==================== RwLock 读写锁 ====================
+fn rwlock_example() {
+    let data = Arc::new(RwLock::new(vec![1, 2, 3]));
+    
+    // 多个读者
+    let data_clone = Arc::clone(&data);
+    thread::spawn(move || {
+        let reader = data_clone.read().unwrap();
+        println!("Read: {:?}", *reader);
+    });
+    
+    // 写者
+    {
+        let mut writer = data.write().unwrap();
+        writer.push(4);
+    }
+}
+
+// ==================== Atomic 原子类型 ====================
+fn atomic_example() {
+    let counter = Arc::new(AtomicUsize::new(0));
+    let mut handles = vec![];
+    
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        handles.push(thread::spawn(move || {
+            for _ in 0..1000 {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        }));
+    }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    
+    println!("Counter: {}", counter.load(Ordering::SeqCst));
+}
+
+// ==================== JoinHandle 获取返回值 ====================
+fn join_handle_example() {
+    let handle = thread::spawn(|| {
+        // 计算
+        42
+    });
+    
+    let result = handle.join().unwrap();
+    println!("Thread returned: {}", result);
+}
+
+// tokio 版本
+async fn tokio_join_example() {
+    let handle = tokio::spawn(async {
+        expensive_computation().await
+    });
+    
+    let result = handle.await.unwrap();
+}
+
+// ==================== crossbeam channel (高性能) ====================
+use crossbeam_channel::{bounded, unbounded, select};
+
+fn crossbeam_example() {
+    let (s, r) = bounded(10);  // 有界
+    // let (s, r) = unbounded(); // 无界
+    
+    thread::spawn(move || {
+        s.send("Hello").unwrap();
+    });
+    
+    println!("{}", r.recv().unwrap());
+}
+
+// select 宏
+fn crossbeam_select() {
+    let (s1, r1) = unbounded();
+    let (s2, r2) = unbounded();
+    
+    thread::spawn(move || s1.send(1).unwrap());
+    thread::spawn(move || s2.send(2).unwrap());
+    
+    select! {
+        recv(r1) -> msg => println!("r1: {:?}", msg),
+        recv(r2) -> msg => println!("r2: {:?}", msg),
+    }
+}
+
+// ==================== flume (高性能 mpmc) ====================
+use flume;
+
+async fn flume_example() {
+    let (tx, rx) = flume::bounded(100);
+    
+    // 同步发送
+    tx.send(1).unwrap();
+    
+    // 异步发送
+    tx.send_async(2).await.unwrap();
+    
+    // 同步接收
+    let val = rx.recv().unwrap();
+    
+    // 异步接收
+    let val = rx.recv_async().await.unwrap();
+}
+
+// ==================== 并发数据结构 ====================
+use dashmap::DashMap;
+
+fn dashmap_example() {
+    let map = DashMap::new();
+    
+    // 并发插入
+    map.insert("key", "value");
+    
+    // 并发读取
+    if let Some(val) = map.get("key") {
+        println!("{}", *val);
+    }
+    
+    // 并发修改
+    map.alter("key", |_, v| format!("{}_modified", v));
+}
+```
+
+### 并发数据传递对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 模式            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 基础 Channel    │ postMessage          │ queue.Queue          │ chan                 │ mpsc::channel        │
+│ 异步 Channel    │ MessageChannel       │ asyncio.Queue        │ chan                 │ tokio::sync::mpsc    │
+│ 广播            │ BroadcastChannel     │ 手动实现             │ 手动实现             │ broadcast::channel   │
+│ 单次传递        │ Promise              │ asyncio.Future       │ chan (cap=1)         │ oneshot::channel     │
+│ 共享状态        │ SharedArrayBuffer    │ Manager/Value        │ sync.Mutex           │ Arc<Mutex<T>>        │
+│ 读写锁          │ ❌                   │ threading.RWLock     │ sync.RWMutex         │ RwLock               │
+│ 原子操作        │ Atomics              │ ❌                   │ atomic               │ std::sync::atomic    │
+│ 对象池          │ ❌                   │ ❌                   │ sync.Pool            │ ❌                   │
+│ 并发 Map        │ ❌                   │ Manager.dict()       │ sync.Map             │ DashMap              │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 选择数据传递方式
+
+| 场景 | 推荐方式 | 原因 |
+|------|----------|------|
+| **任务结果返回** | Promise/Future/JoinHandle | 简单直接 |
+| **生产者-消费者** | Channel/Queue | 解耦，背压控制 |
+| **配置热更新** | watch/atomic.Value | 最新值广播 |
+| **高频读低频写** | RwLock | 读不阻塞 |
+| **计数器/标志** | Atomic | 无锁高性能 |
+| **复杂共享状态** | Mutex + Arc | 灵活但需注意死锁 |
+| **跨进程** | 共享内存/IPC | 高性能大数据 |
+
 ---
 
 ## ❓ 三元表达式
