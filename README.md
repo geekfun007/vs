@@ -15304,6 +15304,841 @@ mycli/
 
 ---
 
+## 📦 模块导入导出
+
+### 模块系统概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 模块单位 | 文件 | 文件/包 | 包(目录) | 文件/crate |
+| 导入关键字 | `import` | `import` | `import` | `use` |
+| 导出关键字 | `export` | 无(默认公开) | 大写首字母 | `pub` |
+| 默认导出 | `export default` | 无 | 无 | 无 |
+| 重导出 | `export { } from` | `__all__` | 无(需包装) | `pub use` |
+| 循环依赖 | 支持(需注意) | 支持(需注意) | 禁止 | 禁止 |
+| 动态导入 | `import()` | `importlib` | 插件机制 | 不支持 |
+
+### TypeScript 模块导入导出
+
+```typescript
+// ==================== 命名导出 (Named Export) ====================
+// math.ts
+export const PI = 3.14159;
+export const E = 2.71828;
+
+export function add(a: number, b: number): number {
+    return a + b;
+}
+
+export function multiply(a: number, b: number): number {
+    return a * b;
+}
+
+export interface Point {
+    x: number;
+    y: number;
+}
+
+export class Calculator {
+    add(a: number, b: number): number {
+        return a + b;
+    }
+}
+
+// ==================== 命名导入 ====================
+// 导入特定项
+import { add, multiply, PI } from './math';
+import { Point, Calculator } from './math';
+
+// 重命名导入
+import { add as addNumbers, multiply as mult } from './math';
+
+// 导入全部为命名空间
+import * as MathUtils from './math';
+MathUtils.add(1, 2);
+MathUtils.PI;
+
+// ==================== 默认导出 (Default Export) ====================
+// logger.ts
+export default class Logger {
+    log(message: string): void {
+        console.log(`[LOG] ${message}`);
+    }
+}
+
+// 或函数
+export default function createLogger(prefix: string) {
+    return (msg: string) => console.log(`[${prefix}] ${msg}`);
+}
+
+// ==================== 默认导入 ====================
+import Logger from './logger';
+import createLogger from './logger';
+
+// 可以用任意名称
+import MyLogger from './logger';
+
+// 同时导入默认和命名
+import Logger, { LogLevel, formatMessage } from './logger';
+
+// ==================== 重导出 (Re-export) ====================
+// index.ts - 桶文件 (Barrel file)
+export { add, multiply } from './math';
+export { default as Logger } from './logger';
+export * from './utils';  // 导出所有命名导出
+export * as MathUtils from './math';  // 作为命名空间重导出
+
+// 重命名后重导出
+export { add as addition } from './math';
+
+// ==================== 类型导入导出 ====================
+// types.ts
+export type UserId = string;
+export interface User {
+    id: UserId;
+    name: string;
+}
+
+// 仅类型导入 (不会编译到 JS)
+import type { User, UserId } from './types';
+
+// 内联类型导入
+import { type User, createUser } from './user';
+
+// 类型重导出
+export type { User, UserId } from './types';
+
+// ==================== 动态导入 ====================
+// 懒加载模块
+async function loadModule() {
+    const { add } = await import('./math');
+    return add(1, 2);
+}
+
+// 条件导入
+async function loadLocale(lang: string) {
+    const locale = await import(`./locales/${lang}.json`);
+    return locale.default;
+}
+
+// 与 React.lazy 结合
+const LazyComponent = React.lazy(() => import('./HeavyComponent'));
+
+// ==================== 模块解析 ====================
+// 相对路径
+import { foo } from './utils';        // 同目录
+import { bar } from '../helpers';     // 上级目录
+import { baz } from './sub/module';   // 子目录
+
+// 绝对路径 (通过 tsconfig paths)
+import { api } from '@/services/api';
+import { Button } from '@components/Button';
+
+// Node 模块
+import express from 'express';
+import { readFile } from 'fs/promises';
+
+// ==================== CommonJS 互操作 ====================
+// 导入 CommonJS 模块
+import lodash from 'lodash';  // default import
+import * as _ from 'lodash';  // namespace import
+
+// 导出为 CommonJS (当 module: commonjs)
+module.exports = { add, multiply };
+exports.PI = 3.14;
+
+// ==================== tsconfig.json 配置 ====================
+{
+    "compilerOptions": {
+        "module": "ESNext",           // 模块系统
+        "moduleResolution": "bundler", // 解析策略
+        "baseUrl": "./src",           // 基础路径
+        "paths": {                    // 路径别名
+            "@/*": ["./*"],
+            "@components/*": ["components/*"]
+        },
+        "esModuleInterop": true,      // CJS/ESM 互操作
+        "allowSyntheticDefaultImports": true
+    }
+}
+```
+
+### Python 模块导入导出
+
+```python
+# ==================== 基本导入 ====================
+# 导入整个模块
+import math
+import os.path
+
+# 使用
+math.sqrt(16)
+os.path.join('a', 'b')
+
+# 导入并重命名
+import numpy as np
+import pandas as pd
+
+# ==================== 从模块导入 ====================
+# 导入特定项
+from math import sqrt, pi, ceil
+from os.path import join, exists
+
+# 导入并重命名
+from math import sqrt as square_root
+from collections import defaultdict as dd
+
+# 导入所有 (不推荐)
+from math import *
+
+# ==================== 包结构 ====================
+"""
+mypackage/
+├── __init__.py          # 包初始化文件
+├── module1.py
+├── module2.py
+└── subpackage/
+    ├── __init__.py
+    └── module3.py
+"""
+
+# ==================== __init__.py 控制导出 ====================
+# mypackage/__init__.py
+from .module1 import func1, Class1
+from .module2 import func2
+from .subpackage import module3
+
+# 定义公开 API
+__all__ = ['func1', 'Class1', 'func2']
+
+# 版本信息
+__version__ = '1.0.0'
+
+# 使用
+from mypackage import func1, Class1
+
+# ==================== 相对导入 ====================
+# 在包内部使用
+# mypackage/module2.py
+from . import module1           # 同级模块
+from .module1 import func1      # 同级模块的函数
+from .. import other_package    # 上级包
+from ..sibling import helper    # 兄弟包
+
+# ==================== 绝对导入 ====================
+# 推荐方式
+from mypackage.module1 import func1
+from mypackage.subpackage.module3 import something
+
+# ==================== 条件导入 ====================
+import sys
+
+if sys.version_info >= (3, 11):
+    from tomllib import load
+else:
+    from tomli import load
+
+# 可选依赖
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
+# 类型检查时导入 (避免循环导入)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .heavy_module import HeavyClass
+
+def process(obj: 'HeavyClass') -> None:
+    pass
+
+# ==================== 动态导入 ====================
+import importlib
+
+# 按名称导入模块
+module = importlib.import_module('math')
+module.sqrt(16)
+
+# 动态导入子模块
+def load_plugin(name: str):
+    return importlib.import_module(f'plugins.{name}')
+
+# 重新加载模块
+importlib.reload(module)
+
+# ==================== 导入钩子 ====================
+import sys
+from importlib.abc import MetaPathFinder, Loader
+from importlib.machinery import ModuleSpec
+
+class CustomFinder(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname.startswith('custom.'):
+            return ModuleSpec(fullname, CustomLoader())
+        return None
+
+class CustomLoader(Loader):
+    def create_module(self, spec):
+        return None
+    
+    def exec_module(self, module):
+        module.custom_attr = 'value'
+
+sys.meta_path.insert(0, CustomFinder())
+
+# ==================== 私有约定 ====================
+# module.py
+public_var = 'accessible'
+_private_var = 'internal use'  # 单下划线: 约定私有
+__very_private = 'name mangled'  # 双下划线: 名称改写
+
+def public_function():
+    pass
+
+def _private_function():  # 不会被 from module import * 导入
+    pass
+
+# ==================== 命名空间包 (PEP 420) ====================
+"""
+无需 __init__.py 的包:
+namespace_pkg/
+    └── sub1/
+        └── module.py
+
+other_location/namespace_pkg/
+    └── sub2/
+        └── module.py
+
+两者合并为同一命名空间
+"""
+
+# ==================== __all__ 详解 ====================
+# utils.py
+__all__ = ['public_func', 'PublicClass']
+
+def public_func():
+    """会被 from utils import * 导入"""
+    pass
+
+def _helper():
+    """不在 __all__ 中，* 导入不包含"""
+    pass
+
+class PublicClass:
+    pass
+
+class _InternalClass:
+    pass
+```
+
+### Go 模块导入导出
+
+```go
+// ==================== 包声明 ====================
+// 每个 Go 文件必须声明包名
+// main.go
+package main  // 可执行程序的入口包
+
+// utils/helper.go
+package utils  // 库包，目录名通常与包名一致
+
+// ==================== 导入语法 ====================
+package main
+
+import (
+    // 标准库
+    "fmt"
+    "os"
+    "net/http"
+    
+    // 第三方包
+    "github.com/gin-gonic/gin"
+    "github.com/spf13/cobra"
+    
+    // 本地包 (模块路径 + 相对路径)
+    "myproject/internal/utils"
+    "myproject/pkg/models"
+)
+
+// 单个导入
+import "fmt"
+
+// ==================== 导入别名 ====================
+import (
+    "fmt"
+    
+    // 别名
+    myfmt "myproject/pkg/fmt"
+    
+    // 点导入 (不推荐，污染命名空间)
+    . "math"
+    
+    // 空白导入 (仅执行 init，不使用)
+    _ "github.com/lib/pq"
+)
+
+// 使用
+func main() {
+    fmt.Println("standard")
+    myfmt.Custom()
+    
+    // 点导入后可直接使用
+    result := Sqrt(16)  // 而非 math.Sqrt
+}
+
+// ==================== 导出规则 (大小写) ====================
+// models/user.go
+package models
+
+// 公开 (大写开头) - 其他包可访问
+type User struct {
+    ID   int    // 公开字段
+    Name string // 公开字段
+    age  int    // 私有字段 (小写)
+}
+
+// 公开函数
+func NewUser(name string) *User {
+    return &User{Name: name}
+}
+
+// 公开方法
+func (u *User) GetName() string {
+    return u.Name
+}
+
+// 私有函数 (小写开头) - 仅包内可访问
+func validateUser(u *User) bool {
+    return u.Name != ""
+}
+
+// 公开常量和变量
+const MaxUsers = 100
+var DefaultUser = &User{Name: "guest"}
+
+// 私有常量和变量
+const maxRetries = 3
+var internalCache = make(map[string]string)
+
+// ==================== internal 包 ====================
+/*
+项目结构:
+myproject/
+├── cmd/
+│   └── app/
+│       └── main.go
+├── internal/          # 内部包，外部项目不可导入
+│   ├── auth/
+│   │   └── auth.go
+│   └── database/
+│       └── db.go
+├── pkg/               # 公开包，可被外部导入
+│   └── models/
+│       └── user.go
+└── go.mod
+*/
+
+// internal 包只能被同一模块内的代码导入
+// 外部项目导入 internal 会报错
+
+// ==================== init 函数 ====================
+package database
+
+import "database/sql"
+
+var db *sql.DB
+
+// init 在包被导入时自动执行
+// 一个包可以有多个 init，按文件名顺序执行
+func init() {
+    var err error
+    db, err = sql.Open("postgres", "...")
+    if err != nil {
+        panic(err)
+    }
+}
+
+// 另一个文件的 init
+func init() {
+    // 执行迁移等
+}
+
+// ==================== 包组织最佳实践 ====================
+/*
+myproject/
+├── cmd/                    # 可执行文件入口
+│   ├── server/
+│   │   └── main.go
+│   └── cli/
+│       └── main.go
+├── internal/               # 私有代码
+│   ├── handler/
+│   ├── service/
+│   └── repository/
+├── pkg/                    # 可导出的库代码
+│   ├── api/
+│   └── models/
+├── api/                    # API 定义 (OpenAPI, protobuf)
+├── configs/                # 配置文件
+├── scripts/                # 脚本
+├── go.mod
+└── go.sum
+*/
+
+// ==================== go.mod 模块文件 ====================
+/*
+module github.com/username/myproject
+
+go 1.21
+
+require (
+    github.com/gin-gonic/gin v1.9.1
+    github.com/spf13/cobra v1.7.0
+)
+
+require (
+    // 间接依赖
+    github.com/inconshreveable/mousetrap v1.1.0 // indirect
+)
+
+replace (
+    // 本地开发替换
+    github.com/some/pkg => ../local/pkg
+)
+*/
+
+// ==================== 子包导入 ====================
+// 同一模块内的包导入
+// myproject/internal/service/user.go
+package service
+
+import (
+    "myproject/internal/repository"
+    "myproject/pkg/models"
+)
+
+type UserService struct {
+    repo *repository.UserRepository
+}
+
+func (s *UserService) GetUser(id int) (*models.User, error) {
+    return s.repo.FindByID(id)
+}
+
+// ==================== 接口与实现分离 ====================
+// pkg/storage/interface.go
+package storage
+
+type Storage interface {
+    Get(key string) ([]byte, error)
+    Set(key string, value []byte) error
+    Delete(key string) error
+}
+
+// internal/storage/redis/redis.go
+package redis
+
+import "myproject/pkg/storage"
+
+type RedisStorage struct {
+    // ...
+}
+
+// 确保实现接口
+var _ storage.Storage = (*RedisStorage)(nil)
+
+func (r *RedisStorage) Get(key string) ([]byte, error) {
+    // 实现
+}
+```
+
+### Rust 模块导入导出
+
+```rust
+// ==================== 模块声明 ====================
+// src/lib.rs 或 src/main.rs
+
+// 声明模块 (从文件或目录加载)
+mod utils;      // 加载 src/utils.rs 或 src/utils/mod.rs
+mod models;     // 加载 src/models.rs 或 src/models/mod.rs
+
+// 内联模块
+mod inline_module {
+    pub fn helper() {}
+}
+
+// ==================== 文件结构 ====================
+/*
+my_crate/
+├── Cargo.toml
+└── src/
+    ├── lib.rs          # 库 crate 根
+    ├── main.rs         # 二进制 crate 根
+    ├── utils.rs        # utils 模块
+    └── models/         # models 模块 (目录形式)
+        ├── mod.rs      # 模块入口
+        ├── user.rs     # 子模块
+        └── post.rs     # 子模块
+*/
+
+// ==================== 可见性 (pub) ====================
+// src/lib.rs
+mod internal {
+    // 私有 - 仅当前模块可见
+    fn private_fn() {}
+    
+    // 公开 - 外部可见
+    pub fn public_fn() {}
+    
+    // pub(crate) - 仅当前 crate 可见
+    pub(crate) fn crate_fn() {}
+    
+    // pub(super) - 仅父模块可见
+    pub(super) fn parent_fn() {}
+    
+    // pub(in path) - 指定路径可见
+    pub(in crate::internal) fn specific_fn() {}
+}
+
+// 公开结构体
+pub struct User {
+    pub name: String,      // 公开字段
+    pub(crate) email: String,  // crate 内可见
+    password: String,      // 私有字段
+}
+
+impl User {
+    // 公开关联函数
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            email: String::new(),
+            password: String::new(),
+        }
+    }
+    
+    // 私有方法
+    fn validate(&self) -> bool {
+        !self.name.is_empty()
+    }
+}
+
+// ==================== use 导入 ====================
+// 导入标准库
+use std::collections::HashMap;
+use std::io::{self, Read, Write};  // self 导入 io 本身
+
+// 导入外部 crate
+use serde::{Serialize, Deserialize};
+use tokio::sync::mpsc;
+
+// 导入当前 crate
+use crate::models::User;
+use crate::utils::helper;
+
+// 导入父模块
+use super::parent_function;
+
+// 导入同级模块
+use self::sibling_module::something;
+
+// ==================== 重命名与通配符 ====================
+// 重命名
+use std::collections::HashMap as Map;
+use std::io::Result as IoResult;
+
+// 通配符 (不推荐，除非 prelude)
+use std::collections::*;
+
+// 嵌套导入
+use std::{
+    collections::{HashMap, HashSet},
+    io::{self, Read, Write},
+    sync::{Arc, Mutex},
+};
+
+// ==================== 重导出 (pub use) ====================
+// src/lib.rs
+mod internal_impl;
+
+// 重导出为公开 API
+pub use internal_impl::ImportantStruct;
+pub use internal_impl::important_function;
+
+// 重命名后重导出
+pub use internal_impl::OldName as NewName;
+
+// 重导出外部 crate
+pub use serde_json::Value as JsonValue;
+
+// ==================== prelude 模式 ====================
+// src/prelude.rs
+pub use crate::models::{User, Post, Comment};
+pub use crate::traits::{Validate, Serialize};
+pub use crate::error::{Error, Result};
+
+// 使用方在一行导入常用项
+use my_crate::prelude::*;
+
+// ==================== 模块文件组织 ====================
+// src/models/mod.rs
+mod user;
+mod post;
+mod comment;
+
+// 公开子模块内容
+pub use user::User;
+pub use post::Post;
+pub use comment::Comment;
+
+// 或公开整个子模块
+pub mod user;
+pub mod post;
+
+// src/models/user.rs
+#[derive(Debug, Clone)]
+pub struct User {
+    pub id: u64,
+    pub name: String,
+}
+
+impl User {
+    pub fn new(name: String) -> Self {
+        Self { id: 0, name }
+    }
+}
+
+// ==================== 条件编译与导入 ====================
+// 平台特定
+#[cfg(target_os = "windows")]
+mod windows_impl;
+
+#[cfg(target_os = "linux")]
+mod linux_impl;
+
+#[cfg(target_os = "windows")]
+pub use windows_impl::*;
+
+#[cfg(target_os = "linux")]
+pub use linux_impl::*;
+
+// feature 特定
+#[cfg(feature = "async")]
+pub mod async_api;
+
+#[cfg(feature = "async")]
+pub use async_api::*;
+
+// ==================== 外部 crate 导入 ====================
+// Cargo.toml
+/*
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+
+[dev-dependencies]
+mockall = "0.11"
+
+[build-dependencies]
+cc = "1.0"
+*/
+
+// 使用
+use serde::{Serialize, Deserialize};
+use tokio::runtime::Runtime;
+use anyhow::{Result, Context};
+
+// ==================== 路径类型 ====================
+// 绝对路径 (从 crate 根开始)
+use crate::models::User;
+use crate::utils::helper;
+
+// 相对路径
+use self::submodule::Item;      // 当前模块的子模块
+use super::sibling::Other;      // 父模块的兄弟模块
+use super::super::ancestor::X;  // 祖父模块
+
+// ==================== workspace 模块 ====================
+// workspace Cargo.toml
+/*
+[workspace]
+members = [
+    "crates/core",
+    "crates/api",
+    "crates/cli",
+]
+*/
+
+// crates/api/Cargo.toml
+/*
+[dependencies]
+core = { path = "../core" }
+*/
+
+// crates/api/src/lib.rs
+use core::models::User;  // 使用 workspace 内其他 crate
+
+// ==================== 测试模块 ====================
+// src/lib.rs
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;  // 导入父模块所有公开项
+    
+    #[test]
+    fn test_add() {
+        assert_eq!(add(2, 3), 5);
+    }
+}
+
+// 集成测试 (tests/integration_test.rs)
+use my_crate::add;  // 只能访问公开 API
+
+#[test]
+fn integration_test() {
+    assert_eq!(add(1, 2), 3);
+}
+```
+
+### 模块导入导出对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 导入模块        │ import * as M        │ import module        │ import "pkg"         │ use crate::module    │
+│ 导入特定项      │ import { a, b }      │ from m import a, b   │ (自动全部)           │ use mod::{a, b}      │
+│ 重命名导入      │ import { a as x }    │ from m import a as x │ import pkg "path"    │ use mod::a as x      │
+│ 默认导出        │ export default       │ ❌                   │ ❌                   │ ❌                   │
+│ 命名导出        │ export { a, b }      │ __all__ = [...]      │ 大写首字母           │ pub                  │
+│ 重导出          │ export { } from      │ from m import *      │ 包装函数             │ pub use              │
+│ 私有项          │ 不导出               │ _前缀 (约定)         │ 小写首字母           │ 不加 pub             │
+│ 动态导入        │ import()             │ importlib            │ 插件机制             │ ❌                   │
+│ 循环依赖        │ ⚠️ 运行时处理        │ ⚠️ 需注意顺序        │ ❌ 编译错误          │ ❌ 编译错误          │
+│ 路径别名        │ tsconfig paths       │ setuptools           │ go.mod replace       │ Cargo.toml           │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 常见模块模式
+
+| 模式 | 描述 | 推荐语言 |
+|------|------|----------|
+| **Barrel 文件** | index 文件重导出子模块 | TypeScript |
+| **Prelude** | 常用项集中导出 | Rust |
+| **\_\_all\_\_** | 控制 * 导入范围 | Python |
+| **internal 包** | 内部实现不可外部导入 | Go |
+| **pub(crate)** | crate 内可见，外部不可见 | Rust |
+| **条件导入** | 按环境/特性选择模块 | 全部支持 |
+| **懒加载** | 按需动态导入模块 | TypeScript/Python |
+
+---
+
 ## 📝 格式化
 
 ### 格式化概览
