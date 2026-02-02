@@ -8249,6 +8249,699 @@ impl Rectangle {
 
 ---
 
+## 📨 函数参数传递规则
+
+### 参数传递概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 基本类型 | 值传递 | 值传递(不可变) | 值传递 | 值传递(Move/Copy) |
+| 对象/结构体 | 引用传递 | 引用传递 | 值传递(复制) | Move(默认)/借用 |
+| 数组 | 引用传递 | 引用传递 | 值传递(复制) | Move/借用 |
+| 显式引用 | ❌ | ❌ | `*T` 指针 | `&T` / `&mut T` |
+| 修改原值 | 可以(对象) | 可以(可变对象) | 需要指针 | 需要 `&mut` |
+
+### 传递方式图解
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           参数传递方式                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  值传递 (Copy)                     引用传递 (Reference)                      │
+│  ┌─────────┐                      ┌─────────┐                               │
+│  │ 原始值   │                      │ 原始值   │                               │
+│  │   42    │                      │ {a: 1}  │◄─────────┐                    │
+│  └────┬────┘                      └─────────┘          │                    │
+│       │ 复制                                           │ 指向                │
+│       ▼                                                │                    │
+│  ┌─────────┐                      ┌─────────┐          │                    │
+│  │ 函数参数 │                      │ 函数参数 │──────────┘                    │
+│  │   42    │                      │   ref   │                               │
+│  └─────────┘                      └─────────┘                               │
+│  修改不影响原值                     修改会影响原值                             │
+│                                                                             │
+│  Move (Rust)                      Borrow (Rust)                             │
+│  ┌─────────┐                      ┌─────────┐                               │
+│  │ 原始值   │ ──转移──►            │ 原始值   │                               │
+│  │ (失效)  │                      │ String  │◄─────────┐                    │
+│  └─────────┘                      └─────────┘          │ 借用               │
+│                                                        │                    │
+│  ┌─────────┐                      ┌─────────┐          │                    │
+│  │ 函数参数 │                      │ 函数参数 │──────────┘                    │
+│  │ String  │ (拥有所有权)          │   &str  │ (只读借用)                     │
+│  └─────────┘                      └─────────┘                               │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### TypeScript 参数传递
+
+```typescript
+// ==================== 基本类型 - 值传递 ====================
+function modifyNumber(x: number): void {
+    x = 100;  // 不影响原值
+}
+
+let num = 42;
+modifyNumber(num);
+console.log(num);  // 42 - 未改变
+
+// 同样适用于 string, boolean, bigint, symbol
+function modifyString(s: string): void {
+    s = "modified";  // 不影响原值
+}
+
+let str = "original";
+modifyString(str);
+console.log(str);  // "original"
+
+// ==================== 对象 - 引用传递 ====================
+function modifyObject(obj: { value: number }): void {
+    obj.value = 100;  // 修改原对象
+}
+
+const myObj = { value: 42 };
+modifyObject(myObj);
+console.log(myObj.value);  // 100 - 已改变
+
+// 重新赋值不影响原引用
+function reassignObject(obj: { value: number }): void {
+    obj = { value: 999 };  // 创建新对象，不影响原引用
+}
+
+const myObj2 = { value: 42 };
+reassignObject(myObj2);
+console.log(myObj2.value);  // 42 - 未改变
+
+// ==================== 数组 - 引用传递 ====================
+function modifyArray(arr: number[]): void {
+    arr.push(4);      // 修改原数组
+    arr[0] = 100;     // 修改原数组
+}
+
+const myArr = [1, 2, 3];
+modifyArray(myArr);
+console.log(myArr);  // [100, 2, 3, 4]
+
+// 重新赋值不影响原引用
+function reassignArray(arr: number[]): void {
+    arr = [7, 8, 9];  // 不影响原数组
+}
+
+const myArr2 = [1, 2, 3];
+reassignArray(myArr2);
+console.log(myArr2);  // [1, 2, 3]
+
+// ==================== 防止修改 - 浅拷贝 ====================
+function safeModify(obj: { value: number }): { value: number } {
+    const copy = { ...obj };  // 浅拷贝
+    copy.value = 100;
+    return copy;
+}
+
+// 深拷贝
+function deepCopy<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj));
+}
+
+function safeDeepModify<T>(obj: T): T {
+    const copy = deepCopy(obj);
+    // 修改 copy...
+    return copy;
+}
+
+// ==================== readonly 防止修改 ====================
+function readOnly(arr: readonly number[]): void {
+    // arr.push(4);    // 编译错误
+    // arr[0] = 100;   // 编译错误
+    console.log(arr[0]);  // 只能读取
+}
+
+interface ReadonlyUser {
+    readonly id: number;
+    readonly name: string;
+}
+
+function processUser(user: ReadonlyUser): void {
+    // user.name = "new";  // 编译错误
+}
+
+// Readonly<T> 工具类型
+function immutableProcess(data: Readonly<{ x: number; y: number }>): void {
+    // data.x = 10;  // 编译错误
+}
+
+// ==================== 类实例 - 引用传递 ====================
+class Counter {
+    count = 0;
+    increment() { this.count++; }
+}
+
+function modifyCounter(c: Counter): void {
+    c.increment();  // 修改原实例
+}
+
+const counter = new Counter();
+modifyCounter(counter);
+console.log(counter.count);  // 1
+```
+
+### Python 参数传递
+
+```python
+# ==================== 不可变类型 - 值传递语义 ====================
+# int, float, str, tuple, frozenset 是不可变的
+def modify_number(x: int) -> None:
+    x = 100  # 创建新对象，不影响原值
+
+num = 42
+modify_number(num)
+print(num)  # 42 - 未改变
+
+def modify_string(s: str) -> None:
+    s = "modified"  # 创建新对象
+
+text = "original"
+modify_string(text)
+print(text)  # "original"
+
+# ==================== 可变类型 - 引用传递 ====================
+# list, dict, set, 自定义类 是可变的
+def modify_list(lst: list) -> None:
+    lst.append(4)    # 修改原列表
+    lst[0] = 100     # 修改原列表
+
+my_list = [1, 2, 3]
+modify_list(my_list)
+print(my_list)  # [100, 2, 3, 4]
+
+def modify_dict(d: dict) -> None:
+    d['new_key'] = 'value'  # 修改原字典
+
+my_dict = {'a': 1}
+modify_dict(my_dict)
+print(my_dict)  # {'a': 1, 'new_key': 'value'}
+
+# 重新赋值不影响原引用
+def reassign_list(lst: list) -> None:
+    lst = [7, 8, 9]  # 局部变量指向新对象
+
+my_list2 = [1, 2, 3]
+reassign_list(my_list2)
+print(my_list2)  # [1, 2, 3] - 未改变
+
+# ==================== 可变默认参数陷阱 ====================
+# 错误示例！
+def bad_append(item, lst=[]):  # 默认列表在所有调用间共享
+    lst.append(item)
+    return lst
+
+bad_append(1)  # [1]
+bad_append(2)  # [1, 2] - 不是 [2]！
+
+# 正确做法
+def good_append(item, lst=None):
+    if lst is None:
+        lst = []
+    lst.append(item)
+    return lst
+
+# ==================== 防止修改 - 拷贝 ====================
+import copy
+
+def safe_modify(lst: list) -> list:
+    copy_lst = lst.copy()  # 浅拷贝
+    # 或 copy_lst = lst[:]
+    # 或 copy_lst = list(lst)
+    copy_lst.append(4)
+    return copy_lst
+
+def deep_safe_modify(data: dict) -> dict:
+    copy_data = copy.deepcopy(data)  # 深拷贝
+    # 修改 copy_data...
+    return copy_data
+
+# ==================== 类型提示表达意图 ====================
+from typing import List, Sequence, MutableSequence
+
+# Sequence - 暗示不修改
+def read_only_process(items: Sequence[int]) -> int:
+    return sum(items)
+
+# MutableSequence - 明确会修改
+def will_modify(items: MutableSequence[int]) -> None:
+    items.append(0)
+
+# ==================== 类实例 ====================
+class User:
+    def __init__(self, name: str):
+        self.name = name
+
+def modify_user(user: User) -> None:
+    user.name = "Modified"  # 修改原实例
+
+u = User("Original")
+modify_user(u)
+print(u.name)  # "Modified"
+
+# ==================== dataclass 与不可变 ====================
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+@dataclass(frozen=True)  # 不可变
+class ImmutablePoint:
+    x: int
+    y: int
+
+def try_modify(p: ImmutablePoint) -> None:
+    # p.x = 10  # 运行时错误: FrozenInstanceError
+    pass
+
+# ==================== id() 查看对象标识 ====================
+def show_id(x):
+    print(f"Inside function: id = {id(x)}")
+
+num = 42
+print(f"Before: id = {id(num)}")
+show_id(num)  # 相同 id（小整数缓存）
+
+lst = [1, 2, 3]
+print(f"Before: id = {id(lst)}")
+show_id(lst)  # 相同 id - 同一个对象
+```
+
+### Go 参数传递
+
+```go
+// ==================== 基本类型 - 值传递 ====================
+func modifyInt(x int) {
+    x = 100  // 不影响原值
+}
+
+func main() {
+    num := 42
+    modifyInt(num)
+    fmt.Println(num)  // 42 - 未改变
+}
+
+// ==================== 结构体 - 值传递(复制) ====================
+type User struct {
+    Name string
+    Age  int
+}
+
+func modifyUser(u User) {
+    u.Name = "Modified"  // 修改的是副本
+}
+
+func main() {
+    user := User{Name: "Original", Age: 30}
+    modifyUser(user)
+    fmt.Println(user.Name)  // "Original" - 未改变
+}
+
+// ==================== 指针 - 引用传递 ====================
+func modifyUserPtr(u *User) {
+    u.Name = "Modified"  // 修改原结构体
+}
+
+func main() {
+    user := User{Name: "Original", Age: 30}
+    modifyUserPtr(&user)
+    fmt.Println(user.Name)  // "Modified" - 已改变
+}
+
+// ==================== 数组 - 值传递(复制) ====================
+func modifyArray(arr [3]int) {
+    arr[0] = 100  // 修改的是副本
+}
+
+func main() {
+    arr := [3]int{1, 2, 3}
+    modifyArray(arr)
+    fmt.Println(arr)  // [1 2 3] - 未改变
+}
+
+// ==================== 切片 - 引用语义 ====================
+// 切片本身是值传递，但底层数组是共享的
+func modifySlice(s []int) {
+    s[0] = 100        // 修改原数组
+    s = append(s, 4)  // 可能创建新数组，不影响原切片
+}
+
+func main() {
+    slice := []int{1, 2, 3}
+    modifySlice(slice)
+    fmt.Println(slice)  // [100 2 3] - 元素已改变，但长度不变
+}
+
+// 要修改切片本身（长度、容量），需要指针
+func appendSlice(s *[]int, val int) {
+    *s = append(*s, val)
+}
+
+func main() {
+    slice := []int{1, 2, 3}
+    appendSlice(&slice, 4)
+    fmt.Println(slice)  // [1 2 3 4]
+}
+
+// ==================== Map - 引用语义 ====================
+func modifyMap(m map[string]int) {
+    m["new"] = 100  // 修改原 map
+}
+
+func main() {
+    m := map[string]int{"a": 1}
+    modifyMap(m)
+    fmt.Println(m)  // map[a:1 new:100]
+}
+
+// ==================== Channel - 引用语义 ====================
+func sendToChannel(ch chan int) {
+    ch <- 42  // 发送到原 channel
+}
+
+// ==================== 接口 - 取决于底层类型 ====================
+func modifyInterface(i interface{}) {
+    // 需要类型断言才能修改
+    if ptr, ok := i.(*User); ok {
+        ptr.Name = "Modified"
+    }
+}
+
+// ==================== 防止修改 - 返回新值 ====================
+func safeModifyUser(u User) User {
+    u.Name = "Modified"
+    return u  // 返回修改后的副本
+}
+
+// 深拷贝结构体
+func deepCopyUser(u *User) User {
+    return User{
+        Name: u.Name,
+        Age:  u.Age,
+    }
+}
+
+// ==================== 何时使用指针 ====================
+// 1. 需要修改原值
+func (u *User) SetName(name string) {
+    u.Name = name
+}
+
+// 2. 大结构体避免复制开销
+type LargeStruct struct {
+    Data [1000000]int
+}
+
+func processLarge(ls *LargeStruct) {
+    // 只传递指针，不复制整个数组
+}
+
+// 3. 表示可选值 (nil)
+func findUser(id int) *User {
+    if id == 0 {
+        return nil
+    }
+    return &User{Name: "Found"}
+}
+
+// ==================== 接收者类型选择 ====================
+type Counter struct {
+    count int
+}
+
+// 值接收者 - 不修改原值
+func (c Counter) Value() int {
+    return c.count
+}
+
+// 指针接收者 - 修改原值
+func (c *Counter) Increment() {
+    c.count++
+}
+```
+
+### Rust 参数传递
+
+```rust
+// ==================== 所有权转移 (Move) ====================
+fn take_ownership(s: String) {
+    println!("{}", s);
+}  // s 在这里被 drop
+
+fn main() {
+    let s = String::from("hello");
+    take_ownership(s);
+    // println!("{}", s);  // 编译错误！s 已被移动
+}
+
+// ==================== Copy 类型 - 自动复制 ====================
+// 实现了 Copy trait 的类型会自动复制
+fn use_number(x: i32) {
+    println!("{}", x);
+}
+
+fn main() {
+    let num = 42;
+    use_number(num);
+    println!("{}", num);  // OK - i32 实现了 Copy
+}
+
+// Copy 类型包括: i32, f64, bool, char, 元组(如果元素都是Copy)
+// 非 Copy: String, Vec, Box, 自定义结构体(默认)
+
+// ==================== 借用 (Borrow) - 不可变引用 ====================
+fn borrow_string(s: &String) {
+    println!("{}", s);
+}  // 借用结束，不会 drop
+
+fn main() {
+    let s = String::from("hello");
+    borrow_string(&s);
+    println!("{}", s);  // OK - 只是借用
+}
+
+// 更好的做法：使用切片
+fn borrow_str(s: &str) {
+    println!("{}", s);
+}
+
+fn main() {
+    let s = String::from("hello");
+    borrow_str(&s);      // String 可以自动解引用为 &str
+    borrow_str("world"); // 字符串字面量也可以
+}
+
+// ==================== 可变借用 (Mutable Borrow) ====================
+fn modify_string(s: &mut String) {
+    s.push_str(" world");
+}
+
+fn main() {
+    let mut s = String::from("hello");
+    modify_string(&mut s);
+    println!("{}", s);  // "hello world"
+}
+
+// ==================== 借用规则 ====================
+fn main() {
+    let mut s = String::from("hello");
+    
+    // 规则1: 多个不可变借用 OK
+    let r1 = &s;
+    let r2 = &s;
+    println!("{} {}", r1, r2);
+    
+    // 规则2: 一个可变借用，不能有其他借用
+    let r3 = &mut s;
+    // let r4 = &s;       // 编译错误！
+    // let r5 = &mut s;   // 编译错误！
+    println!("{}", r3);
+}
+
+// ==================== 结构体所有权 ====================
+struct User {
+    name: String,
+    age: u32,
+}
+
+// 获取所有权
+fn take_user(user: User) {
+    println!("{}", user.name);
+}  // user 被 drop
+
+// 借用
+fn borrow_user(user: &User) {
+    println!("{}", user.name);
+}
+
+// 可变借用
+fn modify_user(user: &mut User) {
+    user.name = String::from("Modified");
+}
+
+// ==================== Clone - 显式复制 ====================
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1.clone();  // 显式深拷贝
+    
+    take_ownership(s1);
+    println!("{}", s2);  // OK - s2 是独立的副本
+}
+
+// ==================== 实现 Copy trait ====================
+#[derive(Copy, Clone)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn use_point(p: Point) {
+    println!("({}, {})", p.x, p.y);
+}
+
+fn main() {
+    let p = Point { x: 1, y: 2 };
+    use_point(p);
+    println!("{}", p.x);  // OK - Point 实现了 Copy
+}
+
+// 注意：包含非 Copy 字段的结构体不能实现 Copy
+// struct Invalid {
+//     name: String,  // String 没有实现 Copy
+// }
+// #[derive(Copy)]  // 编译错误！
+
+// ==================== 方法中的 self ====================
+struct Counter {
+    count: i32,
+}
+
+impl Counter {
+    // 获取所有权
+    fn consume(self) -> i32 {
+        self.count
+    }  // self 被 drop
+    
+    // 不可变借用
+    fn get(&self) -> i32 {
+        self.count
+    }
+    
+    // 可变借用
+    fn increment(&mut self) {
+        self.count += 1;
+    }
+}
+
+fn main() {
+    let mut c = Counter { count: 0 };
+    println!("{}", c.get());       // 借用
+    c.increment();                  // 可变借用
+    println!("{}", c.get());       // 借用
+    let final_count = c.consume(); // 移动
+    // c.get();  // 编译错误！c 已被移动
+}
+
+// ==================== 切片借用 ====================
+fn sum(slice: &[i32]) -> i32 {
+    slice.iter().sum()
+}
+
+fn main() {
+    let arr = [1, 2, 3, 4, 5];
+    let vec = vec![1, 2, 3, 4, 5];
+    
+    println!("{}", sum(&arr));     // 数组切片
+    println!("{}", sum(&vec));     // Vec 切片
+    println!("{}", sum(&arr[1..4])); // 部分切片
+}
+
+// ==================== 返回引用需要生命周期 ====================
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() { x } else { y }
+}
+
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = String::from("world!");
+    let result = longest(&s1, &s2);
+    println!("{}", result);
+}
+
+// ==================== Cow - 写时复制 ====================
+use std::borrow::Cow;
+
+fn process(input: &str) -> Cow<str> {
+    if input.contains("bad") {
+        // 需要修改时才分配
+        Cow::Owned(input.replace("bad", "good"))
+    } else {
+        // 不需要修改，返回借用
+        Cow::Borrowed(input)
+    }
+}
+```
+
+### 参数传递规则对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 类型            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 数字            │ 值传递               │ 不可变(值语义)       │ 值传递               │ Copy                 │
+│ 字符串          │ 值传递               │ 不可变(值语义)       │ 值传递               │ Move / &str          │
+│ 布尔            │ 值传递               │ 不可变(值语义)       │ 值传递               │ Copy                 │
+│ 数组/列表       │ 引用传递             │ 引用传递(可变)       │ 值传递(复制)         │ Move / &[T]          │
+│ 对象/结构体     │ 引用传递             │ 引用传递(可变)       │ 值传递(复制)         │ Move / &T            │
+│ Map/Dict        │ 引用传递             │ 引用传递(可变)       │ 引用传递             │ Move / &HashMap      │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 修改原值        │ 对象字段可改         │ 可变对象可改         │ 需要指针 *T          │ 需要 &mut T          │
+│ 防止修改        │ readonly / 拷贝      │ 拷贝 / frozen        │ 不传指针             │ 不传 &mut            │
+│ 显式复制        │ {...} / 深拷贝       │ copy.deepcopy        │ 手动赋值             │ .clone()             │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 最佳实践
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| **只读访问** | 直接传递 | 直接传递 | 值传递 | `&T` 借用 |
+| **需要修改** | 传对象 | 传可变对象 | 传指针 `*T` | `&mut T` |
+| **避免大对象复制** | 默认引用 | 默认引用 | 传指针 | 传引用 |
+| **防止意外修改** | `readonly` / 拷贝 | `frozen` / 拷贝 | 值传递 | 只传 `&T` |
+| **转移所有权** | N/A | N/A | N/A | 直接传递(move) |
+| **可选参数** | `?` / `undefined` | `= None` | `*T` (nil) | `Option<T>` |
+
+### 常见陷阱
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TypeScript: 以为修改了原值，实际重新赋值了引用                                │
+│   function f(arr) { arr = [1,2,3]; }  // 不影响原数组                       │
+│                                                                             │
+│ Python: 可变默认参数在所有调用间共享                                         │
+│   def f(lst=[]):  // 错误！应该用 lst=None                                  │
+│                                                                             │
+│ Go: 以为切片会自动扩容影响原切片                                             │
+│   func f(s []int) { s = append(s, 1) }  // 可能不影响原切片                 │
+│                                                                             │
+│ Rust: 忘记所有权已转移                                                       │
+│   let s = String::from("hi");                                               │
+│   take(s);                                                                  │
+│   println!("{}", s);  // 编译错误！                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 📝 函数默认参数
 
 ### 默认参数支持概览
