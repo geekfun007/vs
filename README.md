@@ -1707,6 +1707,633 @@ match user {
 
 ---
 
+## 🔗 指针与引用
+
+### 指针/引用概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 指针类型 | ❌ | ❌ | `*T` | `*const T` / `*mut T` |
+| 引用类型 | 对象自动引用 | 对象自动引用 | `&T` (取地址) | `&T` / `&mut T` |
+| 空指针 | `null`/`undefined` | `None` | `nil` | `Option<&T>` |
+| 解引用 | 自动 | 自动 | `*ptr` | `*ptr` |
+| 智能指针 | ❌ | ❌ | ❌ | `Box`/`Rc`/`Arc` |
+| 裸指针 | ❌ | `ctypes` | `unsafe.Pointer` | `*const T`/`*mut T` |
+
+### 指针与引用图解
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         指针与引用的区别                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  引用 (Reference)                    指针 (Pointer)                         │
+│  ┌─────────┐                        ┌─────────┐                             │
+│  │ 变量 x  │                        │ 变量 x  │                             │
+│  │  42     │                        │  42     │                             │
+│  └────▲────┘                        └────▲────┘                             │
+│       │                                  │                                  │
+│       │ 别名                             │ 地址: 0x1234                      │
+│       │                                  │                                  │
+│  ┌────┴────┐                        ┌────┴────┐                             │
+│  │ 引用 r  │                        │ 指针 p  │                             │
+│  │  &x     │                        │ 0x1234  │ ← 存储的是地址              │
+│  └─────────┘                        └─────────┘                             │
+│  • 必须有效                          • 可以为 null/nil                       │
+│  • 自动解引用                        • 需要显式解引用 *p                     │
+│  • 编译器保证安全                    • 可能悬垂(dangling)                   │
+│                                                                             │
+│  智能指针 (Rust)                                                            │
+│  ┌─────────────────────────────────────────────────┐                       │
+│  │ Box<T>     - 堆上分配，独占所有权               │                       │
+│  │ Rc<T>      - 引用计数，单线程共享               │                       │
+│  │ Arc<T>     - 原子引用计数，多线程共享           │                       │
+│  │ RefCell<T> - 运行时借用检查                     │                       │
+│  └─────────────────────────────────────────────────┘                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### TypeScript 引用
+
+```typescript
+// ==================== 对象引用 ====================
+// TypeScript 中对象、数组、函数都是引用类型
+const obj1 = { value: 42 };
+const obj2 = obj1;  // obj2 引用同一个对象
+
+obj2.value = 100;
+console.log(obj1.value);  // 100 - 同一对象
+
+// 检查是否同一引用
+console.log(obj1 === obj2);  // true
+
+// ==================== 基本类型是值 ====================
+let a = 42;
+let b = a;  // 复制值
+b = 100;
+console.log(a);  // 42 - 不受影响
+
+// ==================== 创建新引用 (浅拷贝) ====================
+const original = { a: 1, nested: { b: 2 } };
+
+// 浅拷贝方法
+const copy1 = { ...original };
+const copy2 = Object.assign({}, original);
+
+copy1.a = 100;
+console.log(original.a);  // 1 - 不受影响
+
+copy1.nested.b = 200;
+console.log(original.nested.b);  // 200 - 嵌套对象仍共享！
+
+// ==================== 深拷贝 ====================
+const deep1 = JSON.parse(JSON.stringify(original));
+const deep2 = structuredClone(original);  // 现代浏览器
+
+// ==================== WeakRef 弱引用 ====================
+let target = { data: "important" };
+const weakRef = new WeakRef(target);
+
+// 获取引用（可能已被 GC）
+const deref = weakRef.deref();
+if (deref) {
+    console.log(deref.data);
+}
+
+// ==================== 引用相等 vs 值相等 ====================
+const arr1 = [1, 2, 3];
+const arr2 = [1, 2, 3];
+const arr3 = arr1;
+
+arr1 === arr2;  // false - 不同对象
+arr1 === arr3;  // true - 同一引用
+
+// 值比较
+JSON.stringify(arr1) === JSON.stringify(arr2);  // true
+
+// ==================== 冻结对象防止修改 ====================
+const frozen = Object.freeze({ value: 42 });
+// frozen.value = 100;  // 严格模式下报错
+
+// 深冻结
+function deepFreeze<T extends object>(obj: T): Readonly<T> {
+    Object.keys(obj).forEach(key => {
+        const value = (obj as any)[key];
+        if (typeof value === 'object' && value !== null) {
+            deepFreeze(value);
+        }
+    });
+    return Object.freeze(obj);
+}
+```
+
+### Python 引用
+
+```python
+# ==================== 对象引用 ====================
+# Python 中一切皆对象，变量是对象的引用/标签
+list1 = [1, 2, 3]
+list2 = list1  # 指向同一个列表
+
+list2.append(4)
+print(list1)  # [1, 2, 3, 4] - 同一对象
+
+# 检查是否同一对象
+print(list1 is list2)  # True
+print(id(list1) == id(list2))  # True
+
+# ==================== 不可变对象 ====================
+# int, str, tuple 是不可变的
+a = 42
+b = a
+b = 100  # 创建新对象
+print(a)  # 42 - 不受影响
+
+# 小整数缓存 (-5 到 256)
+x = 100
+y = 100
+print(x is y)  # True - 缓存的同一对象
+
+# 字符串驻留
+s1 = "hello"
+s2 = "hello"
+print(s1 is s2)  # True - 驻留的同一对象
+
+# ==================== 浅拷贝 ====================
+import copy
+
+original = [1, 2, [3, 4]]
+
+# 浅拷贝方法
+copy1 = original.copy()
+copy2 = list(original)
+copy3 = original[:]
+copy4 = copy.copy(original)
+
+copy1[0] = 100
+print(original[0])  # 1 - 不受影响
+
+copy1[2][0] = 300
+print(original[2][0])  # 300 - 嵌套对象共享！
+
+# ==================== 深拷贝 ====================
+deep = copy.deepcopy(original)
+deep[2][0] = 999
+print(original[2][0])  # 300 - 完全独立
+
+# ==================== 弱引用 ====================
+import weakref
+
+class MyClass:
+    pass
+
+obj = MyClass()
+weak = weakref.ref(obj)
+
+print(weak())  # <MyClass object>
+del obj
+print(weak())  # None - 对象已被回收
+
+# WeakValueDictionary
+cache = weakref.WeakValueDictionary()
+obj = MyClass()
+cache['key'] = obj
+
+# ==================== 引用计数 ====================
+import sys
+
+a = [1, 2, 3]
+print(sys.getrefcount(a))  # 2 (a + getrefcount 参数)
+
+b = a
+print(sys.getrefcount(a))  # 3
+
+del b
+print(sys.getrefcount(a))  # 2
+
+# ==================== 可变参数陷阱 ====================
+# 错误！默认列表在所有调用间共享
+def bad(items=[]):
+    items.append(1)
+    return items
+
+print(bad())  # [1]
+print(bad())  # [1, 1] - 不是 [1]！
+
+# 正确做法
+def good(items=None):
+    if items is None:
+        items = []
+    items.append(1)
+    return items
+
+# ==================== __slots__ 优化内存 ====================
+class WithSlots:
+    __slots__ = ['x', 'y']  # 不使用 __dict__
+    
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+# 比普通类省内存，但不能动态添加属性
+```
+
+### Go 指针
+
+```go
+// ==================== 指针基础 ====================
+var x int = 42
+var p *int = &x  // p 是指向 x 的指针
+
+fmt.Println(p)   // 0xc0000b4008 (地址)
+fmt.Println(*p)  // 42 (解引用)
+
+*p = 100         // 通过指针修改值
+fmt.Println(x)   // 100
+
+// ==================== 零值是 nil ====================
+var ptr *int     // nil
+if ptr == nil {
+    fmt.Println("ptr is nil")
+}
+
+// 解引用 nil 会 panic
+// fmt.Println(*ptr)  // panic!
+
+// ==================== new 和 & ====================
+// new 返回指针，值为零值
+p1 := new(int)    // *int, 值为 0
+*p1 = 42
+
+// & 取地址
+val := 42
+p2 := &val
+
+// 字面量取地址
+p3 := &struct{ x int }{x: 42}
+
+// ==================== 指针作为参数 ====================
+func double(x *int) {
+    *x *= 2
+}
+
+num := 10
+double(&num)
+fmt.Println(num)  // 20
+
+// ==================== 结构体指针 ====================
+type User struct {
+    Name string
+    Age  int
+}
+
+// 自动解引用
+func (u *User) Birthday() {
+    u.Age++  // 等同于 (*u).Age++
+}
+
+user := &User{Name: "Alice", Age: 30}
+user.Birthday()
+fmt.Println(user.Age)  // 31
+
+// ==================== 指针数组 vs 数组指针 ====================
+// 指针数组: 元素是指针
+var ptrArr [3]*int
+
+// 数组指针: 指向数组的指针
+arr := [3]int{1, 2, 3}
+var arrPtr *[3]int = &arr
+arrPtr[0] = 100  // 自动解引用
+
+// ==================== 不能获取的地址 ====================
+// 常量没有地址
+// const c = 42
+// p := &c  // 编译错误
+
+// map 的值没有地址
+m := map[string]int{"a": 1}
+// p := &m["a"]  // 编译错误
+
+// ==================== unsafe.Pointer ====================
+import "unsafe"
+
+// 任意指针类型转换
+var i int64 = 42
+ptr := unsafe.Pointer(&i)
+floatPtr := (*float64)(ptr)
+
+// 指针运算
+arr := [3]int{10, 20, 30}
+p := unsafe.Pointer(&arr[0])
+p = unsafe.Pointer(uintptr(p) + unsafe.Sizeof(arr[0]))
+fmt.Println(*(*int)(p))  // 20
+
+// ==================== 返回局部变量指针 (安全) ====================
+func createUser() *User {
+    u := User{Name: "Bob"}  // 逃逸到堆
+    return &u  // 安全！Go 会处理
+}
+
+// ==================== 指针接收者 vs 值接收者 ====================
+type Counter struct {
+    count int
+}
+
+// 值接收者 - 复制
+func (c Counter) ValueMethod() {
+    c.count++  // 修改副本
+}
+
+// 指针接收者 - 原值
+func (c *Counter) PointerMethod() {
+    c.count++  // 修改原值
+}
+
+c := Counter{count: 0}
+c.ValueMethod()
+fmt.Println(c.count)  // 0
+
+c.PointerMethod()
+fmt.Println(c.count)  // 1
+
+// ==================== 何时使用指针 ====================
+/*
+使用指针:
+1. 需要修改参数值
+2. 大结构体避免复制
+3. 方法需要修改接收者
+4. 表示可选值 (nil)
+
+使用值:
+1. 小数据类型 (int, bool)
+2. 不需要修改
+3. 需要复制语义
+4. 并发安全的不可变数据
+*/
+```
+
+### Rust 引用与指针
+
+```rust
+// ==================== 引用 (安全) ====================
+// 不可变引用 &T
+let x = 42;
+let r: &i32 = &x;
+println!("{}", *r);  // 42
+
+// 可变引用 &mut T
+let mut y = 42;
+let r_mut: &mut i32 = &mut y;
+*r_mut = 100;
+println!("{}", y);  // 100
+
+// ==================== 借用规则 ====================
+let mut s = String::from("hello");
+
+// 规则1: 多个不可变引用 OK
+let r1 = &s;
+let r2 = &s;
+println!("{} {}", r1, r2);
+
+// 规则2: 一个可变引用，无其他引用
+let r3 = &mut s;
+// let r4 = &s;      // 编译错误！
+// let r5 = &mut s;  // 编译错误！
+r3.push_str(" world");
+
+// ==================== 悬垂引用 (编译器阻止) ====================
+// fn dangling() -> &String {
+//     let s = String::from("hello");
+//     &s  // 编译错误！s 将被释放
+// }
+
+// 正确: 返回所有权
+fn not_dangling() -> String {
+    let s = String::from("hello");
+    s
+}
+
+// ==================== 裸指针 (unsafe) ====================
+let x = 42;
+
+// 创建裸指针 (安全)
+let r1 = &x as *const i32;  // 不可变裸指针
+let mut y = 42;
+let r2 = &mut y as *mut i32;  // 可变裸指针
+
+// 解引用裸指针 (unsafe)
+unsafe {
+    println!("{}", *r1);  // 42
+    *r2 = 100;
+    println!("{}", *r2);  // 100
+}
+
+// 空指针
+let null_ptr: *const i32 = std::ptr::null();
+let null_mut: *mut i32 = std::ptr::null_mut();
+
+// ==================== Box<T> - 堆分配 ====================
+// 独占所有权的堆分配
+let boxed: Box<i32> = Box::new(42);
+println!("{}", *boxed);
+
+// 用于递归类型
+enum List {
+    Cons(i32, Box<List>),
+    Nil,
+}
+
+let list = List::Cons(1, Box::new(List::Cons(2, Box::new(List::Nil))));
+
+// ==================== Rc<T> - 引用计数 ====================
+use std::rc::Rc;
+
+let a = Rc::new(5);
+let b = Rc::clone(&a);  // 增加引用计数
+let c = Rc::clone(&a);
+
+println!("count: {}", Rc::strong_count(&a));  // 3
+
+// ==================== Arc<T> - 原子引用计数 (线程安全) ====================
+use std::sync::Arc;
+use std::thread;
+
+let data = Arc::new(vec![1, 2, 3]);
+
+let handles: Vec<_> = (0..3).map(|_| {
+    let data = Arc::clone(&data);
+    thread::spawn(move || {
+        println!("{:?}", data);
+    })
+}).collect();
+
+for handle in handles {
+    handle.join().unwrap();
+}
+
+// ==================== RefCell<T> - 内部可变性 ====================
+use std::cell::RefCell;
+
+let cell = RefCell::new(5);
+
+// 运行时借用检查
+*cell.borrow_mut() += 1;
+println!("{}", *cell.borrow());  // 6
+
+// 多次借用会 panic
+// let r1 = cell.borrow_mut();
+// let r2 = cell.borrow_mut();  // panic!
+
+// ==================== Cell<T> - 简单内部可变性 ====================
+use std::cell::Cell;
+
+let cell = Cell::new(5);
+cell.set(10);
+println!("{}", cell.get());  // 10
+
+// ==================== Rc<RefCell<T>> 组合 ====================
+use std::rc::Rc;
+use std::cell::RefCell;
+
+let shared = Rc::new(RefCell::new(vec![1, 2, 3]));
+
+let a = Rc::clone(&shared);
+let b = Rc::clone(&shared);
+
+a.borrow_mut().push(4);
+println!("{:?}", b.borrow());  // [1, 2, 3, 4]
+
+// ==================== Weak<T> - 弱引用 ====================
+use std::rc::{Rc, Weak};
+
+let strong = Rc::new(5);
+let weak: Weak<i32> = Rc::downgrade(&strong);
+
+// 升级为强引用
+if let Some(val) = weak.upgrade() {
+    println!("{}", val);
+}
+
+drop(strong);
+assert!(weak.upgrade().is_none());  // 已被释放
+
+// ==================== Cow<T> - 写时复制 ====================
+use std::borrow::Cow;
+
+fn process(s: Cow<str>) -> Cow<str> {
+    if s.contains("bad") {
+        // 需要修改时才分配
+        Cow::Owned(s.replace("bad", "good"))
+    } else {
+        s  // 不修改则保持借用
+    }
+}
+
+let borrowed: Cow<str> = Cow::Borrowed("hello");
+let owned: Cow<str> = Cow::Owned(String::from("world"));
+
+// ==================== Pin<T> - 固定内存位置 ====================
+use std::pin::Pin;
+use std::marker::PhantomPinned;
+
+struct Unmovable {
+    data: String,
+    _pin: PhantomPinned,
+}
+
+impl Unmovable {
+    fn new(data: String) -> Pin<Box<Self>> {
+        Box::pin(Unmovable {
+            data,
+            _pin: PhantomPinned,
+        })
+    }
+}
+
+// ==================== 指针比较 ====================
+let x = 5;
+let y = 5;
+let rx = &x;
+let ry = &y;
+
+// 值比较
+assert_eq!(*rx, *ry);
+
+// 指针比较
+assert!(!std::ptr::eq(rx, ry));
+
+let rz = rx;
+assert!(std::ptr::eq(rx, rz));
+```
+
+### 指针/引用对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 引用类型        │ 对象/数组自动        │ 所有对象自动         │ 显式 &/*/指针        │ 显式 &/&mut          │
+│ 获取地址        │ ❌                   │ id()                 │ &x                   │ &x / &mut x          │
+│ 解引用          │ 自动                 │ 自动                 │ *p                   │ *p                   │
+│ 空值            │ null/undefined       │ None                 │ nil                  │ Option<&T>           │
+│ 可变性控制      │ readonly             │ 约定                 │ 值/指针              │ &T / &mut T          │
+│ 悬垂指针        │ GC 防止              │ GC 防止              │ 可能                 │ 编译器阻止           │
+│ 线程安全        │ 隔离                 │ GIL                  │ 手动                 │ Send/Sync            │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 智能指针        │ ❌                   │ ❌                   │ ❌                   │ Box/Rc/Arc           │
+│ 引用计数        │ GC                   │ GC                   │ ❌                   │ Rc/Arc               │
+│ 弱引用          │ WeakRef              │ weakref              │ ❌                   │ Weak                 │
+│ 内部可变        │ ❌                   │ 默认可变             │ ❌                   │ Cell/RefCell         │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 使用场景指南
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| **共享只读数据** | 直接传递 | 直接传递 | 传值/指针 | `&T` |
+| **共享可变数据** | 对象引用 | 对象引用 | 传指针 `*T` | `&mut T` |
+| **多所有者共享** | 默认行为 | 默认行为 | 手动管理 | `Rc<T>`/`Arc<T>` |
+| **堆分配** | 自动 | 自动 | `new`/`make` | `Box<T>` |
+| **可选值** | `\| undefined` | `\| None` | `*T` (nil) | `Option<T>` |
+| **避免循环引用** | WeakRef | weakref | 手动 | `Weak<T>` |
+| **线程共享** | Worker隔离 | Queue | `sync` 包 | `Arc<Mutex<T>>` |
+
+### 常见陷阱
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Go: 在循环中取地址                                                          │
+│   for _, v := range items {                                                 │
+│       pointers = append(pointers, &v)  // 错误！都指向同一个 v              │
+│   }                                                                         │
+│   // 正确做法:                                                              │
+│   for i := range items {                                                    │
+│       pointers = append(pointers, &items[i])                                │
+│   }                                                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Rust: 同时持有可变和不可变引用                                               │
+│   let mut v = vec![1, 2, 3];                                                │
+│   let first = &v[0];                                                        │
+│   v.push(4);  // 编译错误！first 还在使用                                   │
+│   println!("{}", first);                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Python: 以为赋值会复制                                                       │
+│   a = [1, 2, 3]                                                             │
+│   b = a  # b 是 a 的引用，不是复制！                                        │
+│   b.append(4)                                                               │
+│   print(a)  # [1, 2, 3, 4]                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ TypeScript: 以为 const 能防止修改内容                                        │
+│   const arr = [1, 2, 3];                                                    │
+│   arr.push(4);  // OK! const 只防止重新赋值                                 │
+│   // arr = [5, 6];  // 这才会报错                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 🔢 Math.trunc 截断函数对比
 
 `trunc` 函数用于截断数字的小数部分，只保留整数部分（向零取整）。
