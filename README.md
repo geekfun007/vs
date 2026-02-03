@@ -20073,6 +20073,359 @@ cargo build --timings               # 编译时间分析
 
 ---
 
+## 🎯 语言特性与特殊语法
+
+### 特性支持概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 解构赋值 | ✅ | ✅ | ❌ | ✅ |
+| 展开运算符 | ✅ `...` | ✅ `*`/`**` | ✅ `...` | ❌ |
+| 可选链 | ✅ `?.` | ❌ | ❌ | ❌ |
+| 空值合并 | ✅ `??` | ❌ | ❌ | ❌ |
+| 模式匹配 | ❌ | ✅ `match` | ❌ | ✅ `match` |
+| 装饰器 | ✅ | ✅ | ❌ | ✅ (属性宏) |
+| 运算符重载 | ❌ | ✅ | ❌ | ✅ |
+| 宏系统 | ❌ | ❌ | ❌ | ✅ |
+| 标签语句 | ✅ | ❌ | ✅ | ✅ |
+| defer/finally | finally | finally | defer | Drop |
+
+### TypeScript 特殊语法
+
+```typescript
+// ==================== 解构赋值 ====================
+const { name, age } = user;                    // 对象解构
+const { name: userName } = user;               // 重命名
+const { name, ...rest } = user;                // 剩余属性
+const { name, country = "USA" } = user;        // 默认值
+const [first, second, ...rest] = [1, 2, 3, 4]; // 数组解构
+const [a, , b] = [1, 2, 3];                    // 跳过元素
+let a = 1, b = 2; [a, b] = [b, a];            // 交换变量
+
+// ==================== 展开运算符 ====================
+const arr2 = [...arr1, 4, 5];          // 数组展开
+const obj2 = { ...obj1, c: 3 };        // 对象展开
+Math.max(...args);                      // 函数调用展开
+function sum(...nums: number[]) {}     // 剩余参数
+
+// ==================== 可选链 (?.) ====================
+user?.profile?.address?.city;          // 安全访问
+user.getName?.();                       // 方法调用
+arr?.[0];                               // 数组索引
+
+// ==================== 空值合并 (??) ====================
+const value = null ?? "default";       // "default"
+const value2 = 0 ?? "default";         // 0 (只检查 null/undefined)
+x ??= 10;                               // 赋值运算符
+
+// ==================== 类型断言 ====================
+const input = el as HTMLInputElement;   // as 断言
+const colors = ["red", "blue"] as const; // const 断言
+const config = {} satisfies Config;     // satisfies (TS 4.9+)
+
+// ==================== 非空断言 (!) ====================
+const element = document.getElementById("app")!;
+
+// ==================== 标签语句 ====================
+outer: for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+        if (condition) break outer;     // 跳出外层循环
+    }
+}
+
+// ==================== 模板字面量类型 ====================
+type EventName = `on${Capitalize<string>}`;
+
+// ==================== 装饰器 ====================
+@log
+class MyClass {
+    @validate
+    method() {}
+}
+```
+
+### Python 特殊语法
+
+```python
+# ==================== 解构赋值 ====================
+a, b, c = (1, 2, 3)                    # 元组解包
+a, b = b, a                            # 交换
+first, *rest = [1, 2, 3, 4]            # 剩余元素
+first, *middle, last = [1, 2, 3, 4, 5]
+
+# ==================== 展开运算符 ====================
+arr2 = [*arr1, 4, 5]                   # 列表展开
+dict2 = {**dict1, "c": 3}              # 字典展开
+print(*args, **kwargs)                 # 函数调用展开
+def func(*args, **kwargs): pass        # 接收任意参数
+def func(a, *, b, c): pass             # 仅关键字参数
+def func(a, b, /, c): pass             # 仅位置参数 (3.8+)
+
+# ==================== 模式匹配 (3.10+) ====================
+match command:
+    case ["load", filename]:
+        load(filename)
+    case {"action": "click", "x": x, "y": y}:
+        click(x, y)
+    case Point(x=0, y=y):
+        print(f"On Y-axis at {y}")
+    case _:
+        print("Unknown")
+
+# ==================== 海象运算符 (:=) 3.8+ ====================
+if (n := len(data)) > 10:
+    print(f"Too long: {n}")
+while (line := file.readline()):
+    process(line)
+
+# ==================== f-string ====================
+f"{name=}"                             # 调试: name='value'
+f"{value:>10}"                         # 格式化
+f"{value:.2f}"                         # 小数位
+
+# ==================== 装饰器 ====================
+@decorator
+def func(): pass
+
+@decorator_with_args(arg)
+def func(): pass
+
+# ==================== 上下文管理器 ====================
+with open("file") as f, lock:
+    content = f.read()
+
+# ==================== 运算符重载 ====================
+class Vector:
+    def __add__(self, other): ...
+    def __mul__(self, scalar): ...
+    def __eq__(self, other): ...
+
+# ==================== 生成器表达式 ====================
+gen = (x**2 for x in range(1000))      # 惰性求值
+lst = [x**2 for x in range(1000)]      # 立即求值
+```
+
+### Go 特殊语法
+
+```go
+// ==================== 短变量声明 ====================
+x := 42                                // 类型推断
+name, age := "Alice", 30               // 多变量
+_, err := doSomething()                // 忽略值
+
+// ==================== defer ====================
+defer f.Close()                        // 函数返回前执行
+// 多个 defer - LIFO 顺序执行
+
+// ==================== 多返回值 ====================
+func divide(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, errors.New("division by zero")
+    }
+    return a / b, nil
+}
+result, err := divide(10, 2)
+
+// 命名返回值
+func f() (result int, err error) {
+    result = 42
+    return  // 裸 return
+}
+
+// ==================== 类型断言 ====================
+s := i.(string)                        // 可能 panic
+s, ok := i.(string)                    // 安全
+
+// type switch
+switch v := i.(type) {
+case int:    fmt.Println("int", v)
+case string: fmt.Println("string", v)
+default:     fmt.Println("unknown")
+}
+
+// ==================== 标签与跳转 ====================
+OuterLoop:
+    for i := 0; i < 3; i++ {
+        for j := 0; j < 3; j++ {
+            if condition {
+                break OuterLoop
+            }
+        }
+    }
+
+// ==================== iota 枚举 ====================
+const (
+    Sunday = iota  // 0
+    Monday         // 1
+    Tuesday        // 2
+)
+const (
+    KB = 1 << (10 * iota)  // 1024
+    MB                      // 1048576
+    GB                      // 1073741824
+)
+
+// ==================== 展开运算符 ====================
+sum(nums...)                           // 切片展开
+combined := append(s1, s2...)          // append 展开
+
+// ==================== 嵌入 (组合) ====================
+type Dog struct {
+    Animal                             // 嵌入
+    Breed string
+}
+dog.Name                               // 访问嵌入字段
+dog.Speak()                            // 调用嵌入方法
+
+// ==================== 空白标识符 ====================
+_, err := f()                          // 忽略返回值
+import _ "pkg"                         // 仅导入副作用
+for _, v := range slice {}             // 忽略索引
+
+// ==================== init 函数 ====================
+func init() {
+    // 包初始化时自动执行
+}
+
+// ==================== 方法表达式 ====================
+f := n.Double                          // 方法值
+g := MyInt.Double                      // 方法表达式
+```
+
+### Rust 特殊语法
+
+```rust
+// ==================== 模式匹配 ====================
+match n {
+    0 => "zero",
+    1 | 2 | 3 => "small",
+    4..=9 => "medium",
+    x if x < 0 => "negative",
+    x @ 10..=20 => format!("{} in range", x),
+    _ => "other",
+}
+
+// ==================== if let / while let ====================
+if let Some(v) = maybe { use(v); }
+while let Some(v) = iter.next() { use(v); }
+let Some(v) = maybe else { return; };  // let else (1.65+)
+
+// ==================== ? 运算符 ====================
+let content = fs::read_to_string(path)?;  // 错误传播
+let value = option?;                       // Option 也可用
+
+// ==================== 解构赋值 ====================
+let (x, y) = (1, 2);                       // 元组
+let Point { x, y } = point;                // 结构体
+let [first, rest @ ..] = arr;              // 数组
+
+// ==================== 闭包 ====================
+let add = |a, b| a + b;                    // 简化形式
+let closure = move || println!("{}", s);  // move 获取所有权
+
+// ==================== 迭代器链 ====================
+numbers.iter()
+    .filter(|&&x| x % 2 == 0)
+    .map(|&x| x * 2)
+    .collect::<Vec<_>>();
+
+// ==================== 宏 ====================
+println!("Hello, {}!", name);
+vec![1, 2, 3];
+assert_eq!(a, b);
+dbg!(expression);                          // 调试打印
+todo!();                                   // 标记未实现
+
+// 声明式宏
+macro_rules! say_hello {
+    () => { println!("Hello!"); };
+    ($name:expr) => { println!("Hello, {}!", $name); };
+}
+
+// ==================== 属性宏 ====================
+#[derive(Debug, Clone, PartialEq)]
+struct Point { x: i32, y: i32 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_it() { assert!(true); }
+}
+
+#[inline]
+#[allow(dead_code)]
+#[deprecated(note = "use new_fn")]
+
+// ==================== 运算符重载 ====================
+impl Add for Vector {
+    type Output = Self;
+    fn add(self, other: Self) -> Self { ... }
+}
+
+// ==================== 标签循环 ====================
+'outer: for i in 0..3 {
+    for j in 0..3 {
+        if cond { break 'outer; }
+    }
+}
+let result = 'search: loop {
+    if found { break 'search value; }
+};
+
+// ==================== turbofish ::<> ====================
+let parsed = "42".parse::<i32>().unwrap();
+let vec = iter.collect::<Vec<_>>();
+
+// ==================== unsafe ====================
+unsafe {
+    let ptr = &x as *const i32;
+    println!("{}", *ptr);
+}
+```
+
+### 特殊语法对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 解构赋值        │ const {a} = obj      │ a, b = tuple         │ ❌                   │ let (a,b) = t        │
+│ 展开            │ ...arr               │ *args, **kw          │ slice...             │ ❌                   │
+│ 可选链          │ obj?.prop            │ ❌                   │ ❌                   │ ❌                   │
+│ 空值合并        │ a ?? b               │ ❌                   │ ❌                   │ .unwrap_or(b)        │
+│ 错误传播        │ throw                │ raise                │ return err           │ ?                    │
+│ 模式匹配        │ ❌                   │ match                │ switch.(type)        │ match                │
+│ 延迟执行        │ finally              │ finally              │ defer                │ Drop                 │
+│ 装饰器          │ @decorator           │ @decorator           │ ❌                   │ #[attr]              │
+│ 运算符重载      │ ❌                   │ __add__              │ ❌                   │ impl Add             │
+│ 宏              │ ❌                   │ ❌                   │ ❌                   │ macro_rules!         │
+│ 标签循环        │ label: for           │ ❌                   │ Label: for           │ 'label: for          │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 语法糖对照表
+
+| 功能 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 短路求值 | `a && b` | `a and b` | `a && b` | `a && b` |
+| 三元运算 | `a ? b : c` | `b if a else c` | 无(用if) | `if a {b} else {c}` |
+| 字符串插值 | `` `${x}` `` | `f"{x}"` | `fmt.Sprintf` | `format!("{}", x)` |
+| 范围 | `for(;;)` | `range(n)` | `for i:=0;i<n;i++` | `0..n` |
+| 包含范围 | 无 | 无 | 无 | `0..=n` |
+| 类型推断 | `const x = 1` | `x = 1` | `x := 1` | `let x = 1` |
+| 匿名函数 | `() => {}` | `lambda: x` | `func() {}` | `\|\| {}` |
+
+### 独特语法特性
+
+| 语言 | 独特特性 |
+|------|----------|
+| **TypeScript** | 可选链 `?.`、空值合并 `??`、类型守卫、模板字面量类型、satisfies |
+| **Python** | 海象运算符 `:=`、f-string 调试 `{x=}`、模式匹配 `match`、切片步长 `[::2]` |
+| **Go** | `defer`、多返回值、`iota` 枚举、类型嵌入、`init()` 函数、`:=` 短声明 |
+| **Rust** | `?` 错误传播、`match` 模式匹配、生命周期 `'a`、宏系统、`unsafe`、turbofish `::<>` |
+
+---
+
 ## 📚 总结
 
 | 语言 | 一句话总结 |
