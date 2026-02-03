@@ -2334,6 +2334,702 @@ assert!(std::ptr::eq(rx, rz));
 
 ---
 
+## 🔄 枚举与状态机
+
+### 枚举类型概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 枚举关键字 | `enum` | `Enum` | `const/iota` | `enum` |
+| 关联数据 | ❌ | ❌ | ❌ | ✅ |
+| 模式匹配 | ❌ | ✅ match | switch | ✅ match |
+| 穷尽检查 | ❌ | ❌ | ❌ | ✅ |
+| 字符串枚举 | ✅ | ✅ | 手动 | 需派生 |
+| 位标志 | 手动 | `Flag` | `iota` | `bitflags` |
+
+### TypeScript 枚举
+
+```typescript
+// ==================== 数字枚举 ====================
+enum Direction {
+    Up,      // 0
+    Down,    // 1
+    Left,    // 2
+    Right,   // 3
+}
+
+// 指定值
+enum Status {
+    Pending = 1,
+    Active = 2,
+    Inactive = 4,
+    Deleted = 8,
+}
+
+// 使用
+const dir: Direction = Direction.Up;
+const name = Direction[0];  // "Up" (反向映射)
+
+// ==================== 字符串枚举 ====================
+enum Color {
+    Red = "RED",
+    Green = "GREEN",
+    Blue = "BLUE",
+}
+
+// 无反向映射
+const color: Color = Color.Red;
+
+// ==================== const 枚举 (编译时内联) ====================
+const enum HttpStatus {
+    OK = 200,
+    NotFound = 404,
+    ServerError = 500,
+}
+// 编译后直接内联为数字，无运行时对象
+
+// ==================== 联合类型替代枚举 (推荐) ====================
+type Direction = "up" | "down" | "left" | "right";
+type Status = "pending" | "active" | "inactive";
+
+// 更好的类型推断
+function move(dir: Direction) {
+    switch (dir) {
+        case "up": return { y: -1 };
+        case "down": return { y: 1 };
+        case "left": return { x: -1 };
+        case "right": return { x: 1 };
+    }
+}
+
+// ==================== 位标志 ====================
+enum Permission {
+    None = 0,
+    Read = 1 << 0,    // 1
+    Write = 1 << 1,   // 2
+    Execute = 1 << 2, // 4
+    All = Read | Write | Execute,
+}
+
+const perms = Permission.Read | Permission.Write;
+const canRead = (perms & Permission.Read) !== 0;
+
+// ==================== 状态机 ====================
+type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
+
+interface Order {
+    id: string;
+    status: OrderStatus;
+}
+
+// 状态转换规则
+const transitions: Record<OrderStatus, OrderStatus[]> = {
+    pending: ["confirmed", "cancelled"],
+    confirmed: ["shipped", "cancelled"],
+    shipped: ["delivered"],
+    delivered: [],
+    cancelled: [],
+};
+
+function canTransition(from: OrderStatus, to: OrderStatus): boolean {
+    return transitions[from].includes(to);
+}
+
+function transition(order: Order, newStatus: OrderStatus): Order {
+    if (!canTransition(order.status, newStatus)) {
+        throw new Error(`Cannot transition from ${order.status} to ${newStatus}`);
+    }
+    return { ...order, status: newStatus };
+}
+
+// ==================== 类型安全的状态机 ====================
+type State = 
+    | { type: "idle" }
+    | { type: "loading" }
+    | { type: "success"; data: string }
+    | { type: "error"; message: string };
+
+type Action = 
+    | { type: "FETCH" }
+    | { type: "SUCCESS"; data: string }
+    | { type: "ERROR"; message: string }
+    | { type: "RESET" };
+
+function reducer(state: State, action: Action): State {
+    switch (state.type) {
+        case "idle":
+            if (action.type === "FETCH") return { type: "loading" };
+            break;
+        case "loading":
+            if (action.type === "SUCCESS") return { type: "success", data: action.data };
+            if (action.type === "ERROR") return { type: "error", message: action.message };
+            break;
+        case "success":
+        case "error":
+            if (action.type === "RESET") return { type: "idle" };
+            break;
+    }
+    return state;
+}
+```
+
+### Python 枚举
+
+```python
+from enum import Enum, IntEnum, Flag, auto, unique
+
+# ==================== 基本枚举 ====================
+class Color(Enum):
+    RED = 1
+    GREEN = 2
+    BLUE = 3
+
+# 使用
+color = Color.RED
+print(color.name)   # "RED"
+print(color.value)  # 1
+
+# 迭代
+for c in Color:
+    print(c)
+
+# 比较
+Color.RED == Color.RED   # True
+Color.RED is Color.RED   # True
+
+# ==================== 自动值 ====================
+class Direction(Enum):
+    UP = auto()      # 1
+    DOWN = auto()    # 2
+    LEFT = auto()    # 3
+    RIGHT = auto()   # 4
+
+# ==================== 字符串枚举 ====================
+class Status(str, Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+# 可直接当字符串用
+print(f"Status: {Status.PENDING}")  # "Status: pending"
+
+# ==================== 整数枚举 ====================
+class HttpStatus(IntEnum):
+    OK = 200
+    NOT_FOUND = 404
+    SERVER_ERROR = 500
+
+# 可直接比较数字
+HttpStatus.OK == 200  # True
+
+# ==================== 唯一值约束 ====================
+@unique
+class Unique(Enum):
+    A = 1
+    B = 2
+    # C = 1  # 报错！值重复
+
+# ==================== 位标志 ====================
+class Permission(Flag):
+    NONE = 0
+    READ = auto()     # 1
+    WRITE = auto()    # 2
+    EXECUTE = auto()  # 4
+    ALL = READ | WRITE | EXECUTE
+
+perms = Permission.READ | Permission.WRITE
+Permission.READ in perms  # True
+
+# ==================== 模式匹配 (3.10+) ====================
+def describe_color(color: Color) -> str:
+    match color:
+        case Color.RED:
+            return "Hot color"
+        case Color.BLUE:
+            return "Cool color"
+        case Color.GREEN:
+            return "Nature color"
+
+# ==================== 状态机 ====================
+from enum import Enum
+from typing import Dict, Set
+
+class OrderStatus(Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+# 状态转换规则
+TRANSITIONS: Dict[OrderStatus, Set[OrderStatus]] = {
+    OrderStatus.PENDING: {OrderStatus.CONFIRMED, OrderStatus.CANCELLED},
+    OrderStatus.CONFIRMED: {OrderStatus.SHIPPED, OrderStatus.CANCELLED},
+    OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
+    OrderStatus.DELIVERED: set(),
+    OrderStatus.CANCELLED: set(),
+}
+
+class Order:
+    def __init__(self, id: str):
+        self.id = id
+        self._status = OrderStatus.PENDING
+    
+    @property
+    def status(self) -> OrderStatus:
+        return self._status
+    
+    def transition(self, new_status: OrderStatus) -> None:
+        if new_status not in TRANSITIONS[self._status]:
+            raise ValueError(
+                f"Cannot transition from {self._status.value} to {new_status.value}"
+            )
+        self._status = new_status
+
+# ==================== 带方法的枚举 ====================
+class Planet(Enum):
+    MERCURY = (3.303e+23, 2.4397e6)
+    VENUS = (4.869e+24, 6.0518e6)
+    EARTH = (5.976e+24, 6.37814e6)
+    
+    def __init__(self, mass: float, radius: float):
+        self.mass = mass
+        self.radius = radius
+    
+    @property
+    def surface_gravity(self) -> float:
+        G = 6.67430e-11
+        return G * self.mass / (self.radius ** 2)
+
+print(Planet.EARTH.surface_gravity)
+```
+
+### Go 枚举与状态机
+
+```go
+// ==================== iota 枚举 ====================
+type Direction int
+
+const (
+    Up Direction = iota  // 0
+    Down                 // 1
+    Left                 // 2
+    Right                // 3
+)
+
+// 方法
+func (d Direction) String() string {
+    return [...]string{"Up", "Down", "Left", "Right"}[d]
+}
+
+// ==================== 字符串枚举 ====================
+type Status string
+
+const (
+    StatusPending  Status = "pending"
+    StatusActive   Status = "active"
+    StatusInactive Status = "inactive"
+)
+
+// ==================== 位标志 ====================
+type Permission int
+
+const (
+    PermNone    Permission = 0
+    PermRead    Permission = 1 << iota  // 1
+    PermWrite                           // 2
+    PermExecute                         // 4
+    PermAll     = PermRead | PermWrite | PermExecute
+)
+
+func (p Permission) Has(flag Permission) bool {
+    return p&flag != 0
+}
+
+perms := PermRead | PermWrite
+perms.Has(PermRead)  // true
+
+// ==================== 状态机 ====================
+type OrderStatus int
+
+const (
+    OrderPending OrderStatus = iota
+    OrderConfirmed
+    OrderShipped
+    OrderDelivered
+    OrderCancelled
+)
+
+// 转换规则
+var transitions = map[OrderStatus][]OrderStatus{
+    OrderPending:   {OrderConfirmed, OrderCancelled},
+    OrderConfirmed: {OrderShipped, OrderCancelled},
+    OrderShipped:   {OrderDelivered},
+    OrderDelivered: {},
+    OrderCancelled: {},
+}
+
+type Order struct {
+    ID     string
+    Status OrderStatus
+}
+
+func (o *Order) CanTransition(to OrderStatus) bool {
+    allowed := transitions[o.Status]
+    for _, s := range allowed {
+        if s == to {
+            return true
+        }
+    }
+    return false
+}
+
+func (o *Order) Transition(to OrderStatus) error {
+    if !o.CanTransition(to) {
+        return fmt.Errorf("cannot transition from %d to %d", o.Status, to)
+    }
+    o.Status = to
+    return nil
+}
+
+// ==================== 接口状态机 ====================
+type State interface {
+    Handle(event Event) State
+    Name() string
+}
+
+type Event string
+
+const (
+    EventStart   Event = "start"
+    EventSuccess Event = "success"
+    EventError   Event = "error"
+    EventReset   Event = "reset"
+)
+
+// 具体状态
+type IdleState struct{}
+
+func (s IdleState) Handle(e Event) State {
+    if e == EventStart {
+        return LoadingState{}
+    }
+    return s
+}
+
+func (s IdleState) Name() string { return "idle" }
+
+type LoadingState struct{}
+
+func (s LoadingState) Handle(e Event) State {
+    switch e {
+    case EventSuccess:
+        return SuccessState{}
+    case EventError:
+        return ErrorState{}
+    }
+    return s
+}
+
+func (s LoadingState) Name() string { return "loading" }
+
+type SuccessState struct{}
+type ErrorState struct{}
+
+// 状态机
+type StateMachine struct {
+    current State
+}
+
+func (sm *StateMachine) Send(e Event) {
+    sm.current = sm.current.Handle(e)
+}
+
+// ==================== 函数式状态机 ====================
+type StateFunc func(Event) StateFunc
+
+func idleState(e Event) StateFunc {
+    if e == EventStart {
+        return loadingState
+    }
+    return idleState
+}
+
+func loadingState(e Event) StateFunc {
+    switch e {
+    case EventSuccess:
+        return successState
+    case EventError:
+        return errorState
+    }
+    return loadingState
+}
+
+func successState(e Event) StateFunc {
+    if e == EventReset {
+        return idleState
+    }
+    return successState
+}
+
+func errorState(e Event) StateFunc {
+    if e == EventReset {
+        return idleState
+    }
+    return errorState
+}
+```
+
+### Rust 枚举与状态机
+
+```rust
+// ==================== 基本枚举 ====================
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+// 使用
+let dir = Direction::Up;
+
+// 模式匹配 (必须穷尽)
+match dir {
+    Direction::Up => println!("Going up"),
+    Direction::Down => println!("Going down"),
+    Direction::Left => println!("Going left"),
+    Direction::Right => println!("Going right"),
+}
+
+// ==================== 带关联数据的枚举 (代数数据类型) ====================
+enum Message {
+    Quit,
+    Move { x: i32, y: i32 },
+    Write(String),
+    ChangeColor(i32, i32, i32),
+}
+
+let msg = Message::Move { x: 10, y: 20 };
+
+match msg {
+    Message::Quit => println!("Quit"),
+    Message::Move { x, y } => println!("Move to ({}, {})", x, y),
+    Message::Write(text) => println!("Text: {}", text),
+    Message::ChangeColor(r, g, b) => println!("Color: ({}, {}, {})", r, g, b),
+}
+
+// ==================== Option 和 Result ====================
+// 内置的带数据枚举
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+// if let 简化匹配
+if let Some(value) = maybe_value {
+    println!("Got: {}", value);
+}
+
+// ==================== 数值枚举 ====================
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(u8)]
+enum HttpStatus {
+    Ok = 200,
+    NotFound = 404,
+    ServerError = 500,
+}
+
+// ==================== 字符串转换 ====================
+use strum_macros::{Display, EnumString};
+
+#[derive(Debug, Display, EnumString)]
+enum Status {
+    #[strum(serialize = "pending")]
+    Pending,
+    #[strum(serialize = "active")]
+    Active,
+    #[strum(serialize = "inactive")]
+    Inactive,
+}
+
+let s: Status = "pending".parse().unwrap();
+println!("{}", Status::Active);  // "active"
+
+// ==================== 位标志 ====================
+use bitflags::bitflags;
+
+bitflags! {
+    struct Permission: u32 {
+        const NONE = 0;
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
+        const ALL = Self::READ.bits | Self::WRITE.bits | Self::EXECUTE.bits;
+    }
+}
+
+let perms = Permission::READ | Permission::WRITE;
+perms.contains(Permission::READ);  // true
+
+// ==================== 类型安全状态机 ====================
+// 使用类型状态模式
+struct Order<S> {
+    id: String,
+    state: S,
+}
+
+// 状态类型
+struct Pending;
+struct Confirmed;
+struct Shipped;
+struct Delivered;
+struct Cancelled;
+
+// 仅允许特定转换
+impl Order<Pending> {
+    fn new(id: String) -> Self {
+        Order { id, state: Pending }
+    }
+    
+    fn confirm(self) -> Order<Confirmed> {
+        Order { id: self.id, state: Confirmed }
+    }
+    
+    fn cancel(self) -> Order<Cancelled> {
+        Order { id: self.id, state: Cancelled }
+    }
+}
+
+impl Order<Confirmed> {
+    fn ship(self) -> Order<Shipped> {
+        Order { id: self.id, state: Shipped }
+    }
+    
+    fn cancel(self) -> Order<Cancelled> {
+        Order { id: self.id, state: Cancelled }
+    }
+}
+
+impl Order<Shipped> {
+    fn deliver(self) -> Order<Delivered> {
+        Order { id: self.id, state: Delivered }
+    }
+}
+
+// 使用 - 编译时检查状态转换
+let order = Order::new("123".to_string());
+let order = order.confirm();  // OK
+let order = order.ship();     // OK
+let order = order.deliver();  // OK
+// order.ship();  // 编译错误！Delivered 状态没有 ship 方法
+
+// ==================== 枚举状态机 ====================
+#[derive(Debug, Clone)]
+enum OrderState {
+    Pending,
+    Confirmed { confirmed_at: DateTime },
+    Shipped { shipped_at: DateTime, tracking: String },
+    Delivered { delivered_at: DateTime },
+    Cancelled { reason: String },
+}
+
+enum OrderEvent {
+    Confirm,
+    Ship { tracking: String },
+    Deliver,
+    Cancel { reason: String },
+}
+
+impl OrderState {
+    fn transition(self, event: OrderEvent) -> Result<OrderState, &'static str> {
+        match (self, event) {
+            (OrderState::Pending, OrderEvent::Confirm) => {
+                Ok(OrderState::Confirmed { confirmed_at: now() })
+            }
+            (OrderState::Pending, OrderEvent::Cancel { reason }) => {
+                Ok(OrderState::Cancelled { reason })
+            }
+            (OrderState::Confirmed { .. }, OrderEvent::Ship { tracking }) => {
+                Ok(OrderState::Shipped { shipped_at: now(), tracking })
+            }
+            (OrderState::Confirmed { .. }, OrderEvent::Cancel { reason }) => {
+                Ok(OrderState::Cancelled { reason })
+            }
+            (OrderState::Shipped { .. }, OrderEvent::Deliver) => {
+                Ok(OrderState::Delivered { delivered_at: now() })
+            }
+            _ => Err("Invalid state transition"),
+        }
+    }
+}
+
+// ==================== 带方法的枚举 ====================
+enum Shape {
+    Circle { radius: f64 },
+    Rectangle { width: f64, height: f64 },
+    Triangle { base: f64, height: f64 },
+}
+
+impl Shape {
+    fn area(&self) -> f64 {
+        match self {
+            Shape::Circle { radius } => std::f64::consts::PI * radius * radius,
+            Shape::Rectangle { width, height } => width * height,
+            Shape::Triangle { base, height } => 0.5 * base * height,
+        }
+    }
+}
+```
+
+### 枚举与状态机对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 枚举定义        │ enum E { A, B }      │ class E(Enum)        │ const + iota         │ enum E { A, B }      │
+│ 关联数据        │ ❌ (用联合类型)      │ ❌                   │ ❌                   │ ✅ E::A(data)        │
+│ 字符串枚举      │ enum E { A="a" }     │ class E(str,Enum)    │ type E string        │ strum 派生           │
+│ 位标志          │ 手动位运算           │ Flag 类              │ iota + 位运算        │ bitflags! 宏         │
+│ 穷尽检查        │ ❌                   │ ❌                   │ ❌                   │ ✅ 编译时            │
+│ 模式匹配        │ switch (有限)        │ match (3.10+)        │ switch               │ match (强大)         │
+│ 状态机类型安全  │ 联合类型             │ 运行时检查           │ 运行时检查           │ 类型状态模式         │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 状态机设计模式
+
+| 模式 | 描述 | 推荐语言 |
+|------|------|----------|
+| **转换表** | Map 存储允许的转换 | 全部 |
+| **状态接口** | 每个状态实现接口 | Go, TypeScript |
+| **类型状态** | 编译时状态检查 | Rust |
+| **代数数据类型** | 枚举带关联数据 | Rust |
+| **联合类型** | 类型安全的状态表示 | TypeScript |
+| **函数式** | 状态函数返回下一状态 | Go, Rust |
+
+### 状态机最佳实践
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. 明确定义所有状态和事件                                                    │
+│ 2. 使用转换表/矩阵明确允许的转换                                            │
+│ 3. 尽可能利用类型系统在编译时检查                                           │
+│ 4. 考虑状态携带的数据 (进入时间、关联信息等)                                │
+│ 5. 处理无效转换 (返回错误 vs 忽略 vs panic)                                 │
+│ 6. 考虑是否需要状态变更通知/回调                                            │
+│ 7. 测试所有状态转换路径                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 🔢 Math.trunc 截断函数对比
 
 `trunc` 函数用于截断数字的小数部分，只保留整数部分（向零取整）。
