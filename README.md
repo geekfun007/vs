@@ -13309,6 +13309,499 @@ path.file_name();   // Some("file.txt")
 path.extension();   // Some("txt")
 ```
 
+### 路径处理详解
+
+#### 路径操作概览
+
+| 操作 | TypeScript (path) | Python (pathlib) | Go (filepath) | Rust (std::path) |
+|------|-------------------|------------------|---------------|------------------|
+| 拼接 | `path.join()` | `Path() / "sub"` | `filepath.Join()` | `Path::join()` |
+| 父目录 | `path.dirname()` | `.parent` | `filepath.Dir()` | `.parent()` |
+| 文件名 | `path.basename()` | `.name` | `filepath.Base()` | `.file_name()` |
+| 扩展名 | `path.extname()` | `.suffix` | `filepath.Ext()` | `.extension()` |
+| 绝对路径 | `path.resolve()` | `.resolve()` | `filepath.Abs()` | `fs::canonicalize()` |
+| 相对路径 | `path.relative()` | `.relative_to()` | `filepath.Rel()` | `pathdiff::diff_paths` |
+| 规范化 | `path.normalize()` | `.resolve()` | `filepath.Clean()` | `fs::canonicalize()` |
+| 是否绝对 | `path.isAbsolute()` | `.is_absolute()` | `filepath.IsAbs()` | `.is_absolute()` |
+
+#### TypeScript 路径操作
+
+```typescript
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+// ==================== 路径拼接 ====================
+path.join('dir', 'subdir', 'file.txt');        // dir/subdir/file.txt
+path.join('/root', 'dir', '..', 'other');      // /root/other (自动处理 ..)
+
+// Windows 兼容
+path.posix.join('a', 'b');   // a/b (始终用 /)
+path.win32.join('a', 'b');   // a\b (始终用 \)
+
+// ==================== 路径解析 ====================
+path.dirname('/a/b/c.txt');     // /a/b
+path.basename('/a/b/c.txt');    // c.txt
+path.basename('/a/b/c.txt', '.txt');  // c (去除扩展名)
+path.extname('file.txt');       // .txt
+path.extname('file.tar.gz');    // .gz
+path.extname('file');           // '' (空字符串)
+
+// 完整解析
+path.parse('/home/user/file.txt');
+// {
+//   root: '/',
+//   dir: '/home/user',
+//   base: 'file.txt',
+//   ext: '.txt',
+//   name: 'file'
+// }
+
+// 从组件构建
+path.format({
+    root: '/',
+    dir: '/home/user',
+    name: 'file',
+    ext: '.txt'
+});  // /home/user/file.txt
+
+// ==================== 绝对路径与相对路径 ====================
+path.resolve('relative/path');           // 基于 cwd 的绝对路径
+path.resolve('/root', 'relative');       // /root/relative
+path.resolve('/a', '/b', 'c');           // /b/c (遇到绝对路径重新开始)
+
+path.relative('/a/b/c', '/a/d/e');       // ../../d/e
+path.relative('/a/b', '/a/b/c/d');       // c/d
+
+path.isAbsolute('/root');   // true
+path.isAbsolute('relative'); // false
+
+// ==================== 规范化 ====================
+path.normalize('/a/b/../c/./d');  // /a/c/d
+path.normalize('a//b//c');        // a/b/c
+
+// ==================== ES Module 中获取 __dirname ====================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ==================== 常用模式 ====================
+// 获取当前脚本所在目录的文件
+const configPath = path.join(__dirname, 'config.json');
+
+// 确保扩展名
+function ensureExtension(file: string, ext: string): string {
+    return path.extname(file) === ext ? file : file + ext;
+}
+
+// 安全的路径拼接 (防止目录遍历攻击)
+function safePath(base: string, userInput: string): string | null {
+    const resolved = path.resolve(base, userInput);
+    if (!resolved.startsWith(base)) {
+        return null;  // 尝试逃逸基目录
+    }
+    return resolved;
+}
+```
+
+#### Python 路径操作
+
+```python
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+import os
+
+# ==================== 创建路径 ====================
+p = Path('dir/subdir/file.txt')
+p = Path('dir') / 'subdir' / 'file.txt'  # 推荐：/ 运算符
+p = Path.home() / 'documents'            # 用户主目录
+p = Path.cwd() / 'relative'              # 当前工作目录
+
+# ==================== 路径组件 ====================
+p = Path('/home/user/file.txt')
+
+p.parts         # ('/', 'home', 'user', 'file.txt')
+p.parent        # Path('/home/user')
+p.parents[0]    # Path('/home/user')
+p.parents[1]    # Path('/home')
+p.name          # 'file.txt'
+p.stem          # 'file'
+p.suffix        # '.txt'
+p.suffixes      # ['.txt']
+
+Path('file.tar.gz').suffixes  # ['.tar', '.gz']
+Path('file.tar.gz').stem      # 'file.tar'
+
+# ==================== 路径修改 ====================
+p = Path('/home/user/file.txt')
+
+p.with_name('other.txt')      # /home/user/other.txt
+p.with_stem('other')          # /home/user/other.txt (Python 3.9+)
+p.with_suffix('.md')          # /home/user/file.md
+p.with_suffix('')             # /home/user/file (去除扩展名)
+
+# ==================== 绝对路径与相对路径 ====================
+Path('relative').resolve()           # 绝对路径
+Path('relative').absolute()          # 绝对路径 (不解析符号链接)
+
+Path('/a/b/c').relative_to('/a')     # Path('b/c')
+Path('/a/b/c').relative_to('/a/b')   # Path('c')
+# Path('/a/b').relative_to('/c')     # ValueError
+
+Path('/root').is_absolute()   # True
+Path('relative').is_absolute() # False
+
+# ==================== 路径匹配 ====================
+p = Path('/home/user/file.txt')
+
+p.match('*.txt')              # True
+p.match('user/*.txt')         # True
+p.match('/home/*/*.txt')      # True
+
+# glob 模式
+list(Path('.').glob('*.py'))        # 当前目录的 .py 文件
+list(Path('.').glob('**/*.py'))     # 递归所有 .py 文件
+list(Path('.').rglob('*.py'))       # 同上，更简洁
+
+# ==================== 路径比较 ====================
+Path('/a/b') == Path('/a/b')        # True
+Path('/a/b') == Path('/a/b/')       # True (规范化比较)
+Path('a/b') == Path('a//b')         # True
+
+# 检查包含关系
+Path('/a/b/c').is_relative_to('/a')  # True (Python 3.9+)
+
+# ==================== 跨平台路径 ====================
+# 纯路径 (不访问文件系统)
+PurePosixPath('/a/b/c')     # Unix 风格
+PureWindowsPath('C:\\a\\b')  # Windows 风格
+
+# 当前系统
+PurePath('/a/b')  # 自动选择
+
+# ==================== 常用模式 ====================
+# 安全的路径拼接
+def safe_join(base: Path, user_input: str) -> Path | None:
+    try:
+        result = (base / user_input).resolve()
+        result.relative_to(base.resolve())
+        return result
+    except ValueError:
+        return None  # 尝试逃逸
+
+# 确保目录存在
+def ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+# 唯一文件名
+def unique_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem, suffix = path.stem, path.suffix
+    counter = 1
+    while True:
+        new_path = path.with_name(f"{stem}_{counter}{suffix}")
+        if not new_path.exists():
+            return new_path
+        counter += 1
+```
+
+#### Go 路径操作
+
+```go
+import (
+    "os"
+    "path"
+    "path/filepath"
+)
+
+// ==================== filepath vs path ====================
+// filepath: 操作系统相关，处理文件系统路径
+// path: 始终使用 / 分隔符，用于 URL 等
+
+// ==================== 路径拼接 ====================
+filepath.Join("dir", "subdir", "file.txt")  // dir/subdir/file.txt (或 dir\subdir\file.txt)
+filepath.Join("/root", "dir", "..", "other") // /root/other
+
+path.Join("a", "b", "c")  // a/b/c (始终用 /)
+
+// ==================== 路径解析 ====================
+filepath.Dir("/a/b/c.txt")      // /a/b
+filepath.Base("/a/b/c.txt")     // c.txt
+filepath.Ext("file.txt")        // .txt
+filepath.Ext("file.tar.gz")     // .gz
+
+// 分割目录和文件名
+dir, file := filepath.Split("/a/b/c.txt")  // "/a/b/", "c.txt"
+
+// 分割扩展名
+name := "file.txt"
+ext := filepath.Ext(name)                   // .txt
+nameWithoutExt := name[:len(name)-len(ext)] // file
+
+// ==================== 绝对路径与相对路径 ====================
+absPath, _ := filepath.Abs("relative")       // 绝对路径
+relPath, _ := filepath.Rel("/a/b", "/a/b/c/d")  // c/d
+relPath, _ := filepath.Rel("/a/b/c", "/a/d/e")  // ../../d/e
+
+filepath.IsAbs("/root")    // true
+filepath.IsAbs("relative") // false
+
+// ==================== 规范化 ====================
+filepath.Clean("/a/b/../c/./d")   // /a/c/d
+filepath.Clean("a//b//c")         // a/b/c
+
+// 解析符号链接
+realPath, _ := filepath.EvalSymlinks("/path/to/symlink")
+
+// ==================== 路径匹配 ====================
+matched, _ := filepath.Match("*.txt", "file.txt")     // true
+matched, _ := filepath.Match("dir/*/*.go", "dir/sub/main.go")  // true
+
+// Glob
+files, _ := filepath.Glob("*.go")
+files, _ := filepath.Glob("**/*.go")  // 注意: 不递归！
+
+// 递归遍历
+filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+    if err != nil {
+        return err
+    }
+    if filepath.Ext(path) == ".go" {
+        fmt.Println(path)
+    }
+    return nil
+})
+
+// ==================== 卷和根 (Windows) ====================
+filepath.VolumeName("C:\\a\\b")  // "C:" (Windows)
+filepath.VolumeName("/a/b")      // "" (Unix)
+
+// ==================== 常用模式 ====================
+// 获取可执行文件目录
+func execDir() string {
+    exe, _ := os.Executable()
+    return filepath.Dir(exe)
+}
+
+// 安全路径拼接
+func safePath(base, userInput string) (string, error) {
+    // 清理用户输入
+    cleaned := filepath.Clean(userInput)
+    
+    // 检查是否包含 ..
+    if strings.Contains(cleaned, "..") {
+        return "", errors.New("invalid path")
+    }
+    
+    // 拼接并确保在基目录内
+    result := filepath.Join(base, cleaned)
+    absBase, _ := filepath.Abs(base)
+    absResult, _ := filepath.Abs(result)
+    
+    if !strings.HasPrefix(absResult, absBase) {
+        return "", errors.New("path escape")
+    }
+    
+    return result, nil
+}
+
+// 确保扩展名
+func ensureExt(path, ext string) string {
+    if filepath.Ext(path) != ext {
+        return path + ext
+    }
+    return path
+}
+```
+
+#### Rust 路径操作
+
+```rust
+use std::path::{Path, PathBuf, Component};
+use std::ffi::OsStr;
+
+// ==================== 创建路径 ====================
+let p = Path::new("dir/subdir/file.txt");    // 借用
+let p = PathBuf::from("dir/subdir/file.txt"); // 所有权
+
+// 拼接
+let p = Path::new("dir").join("subdir").join("file.txt");
+let mut p = PathBuf::from("dir");
+p.push("subdir");
+p.push("file.txt");
+
+// ==================== 路径组件 ====================
+let p = Path::new("/home/user/file.txt");
+
+p.parent();           // Some("/home/user")
+p.file_name();        // Some("file.txt")
+p.file_stem();        // Some("file")
+p.extension();        // Some("txt")
+
+// ancestors 迭代器
+for ancestor in p.ancestors() {
+    println!("{:?}", ancestor);
+}
+// /home/user/file.txt
+// /home/user
+// /home
+// /
+
+// components 迭代器
+for comp in p.components() {
+    match comp {
+        Component::RootDir => println!("Root"),
+        Component::Normal(name) => println!("Dir: {:?}", name),
+        _ => {}
+    }
+}
+
+// ==================== 路径修改 ====================
+let p = Path::new("/home/user/file.txt");
+
+p.with_file_name("other.txt");   // /home/user/other.txt
+p.with_extension("md");          // /home/user/file.md
+p.with_extension("");            // /home/user/file
+
+let mut p = PathBuf::from("/home/user/file.txt");
+p.set_file_name("other.txt");
+p.set_extension("md");
+
+// ==================== 绝对路径与规范化 ====================
+use std::fs;
+
+// 规范化并解析符号链接
+let abs = fs::canonicalize("relative/path")?;
+
+// 检查是否绝对路径
+Path::new("/root").is_absolute();    // true
+Path::new("relative").is_absolute(); // false
+
+// 相对路径 (需要 pathdiff crate)
+use pathdiff::diff_paths;
+let rel = diff_paths("/a/b/c/d", "/a/b");  // Some("c/d")
+
+// ==================== 路径匹配 ====================
+// 使用 glob crate
+use glob::glob;
+
+for entry in glob("**/*.rs")? {
+    let path = entry?;
+    println!("{:?}", path);
+}
+
+// 手动匹配
+let p = Path::new("file.txt");
+p.extension() == Some(OsStr::new("txt"));
+
+// ==================== 路径检查 ====================
+let p = Path::new("file.txt");
+
+p.exists();         // 是否存在
+p.is_file();        // 是否是文件
+p.is_dir();         // 是否是目录
+p.is_symlink();     // 是否是符号链接
+p.is_absolute();    // 是否是绝对路径
+p.is_relative();    // 是否是相对路径
+
+// 元数据
+let metadata = p.metadata()?;
+metadata.is_file();
+metadata.is_dir();
+metadata.len();
+
+// ==================== 跨平台注意 ====================
+// Path 和 PathBuf 自动处理平台差异
+// 但字符串转换需要注意
+
+let p = Path::new("/some/path");
+
+// 可能失败 (非 UTF-8)
+let s: Option<&str> = p.to_str();
+
+// 有损转换
+let s: std::borrow::Cow<str> = p.to_string_lossy();
+
+// OsStr 操作
+let os_str: &OsStr = p.as_os_str();
+
+// ==================== 常用模式 ====================
+// 安全路径拼接
+fn safe_join(base: &Path, user_input: &str) -> Option<PathBuf> {
+    let path = base.join(user_input);
+    let canonical = std::fs::canonicalize(&path).ok()?;
+    let base_canonical = std::fs::canonicalize(base).ok()?;
+    
+    if canonical.starts_with(&base_canonical) {
+        Some(canonical)
+    } else {
+        None
+    }
+}
+
+// 确保父目录存在
+fn ensure_parent(path: &Path) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
+}
+
+// 唯一文件名
+fn unique_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+    
+    let stem = path.file_stem().unwrap_or_default();
+    let ext = path.extension();
+    let parent = path.parent().unwrap_or(Path::new(""));
+    
+    let mut counter = 1;
+    loop {
+        let new_name = match ext {
+            Some(e) => format!("{}_{}.{}", stem.to_string_lossy(), counter, e.to_string_lossy()),
+            None => format!("{}_{}", stem.to_string_lossy(), counter),
+        };
+        let new_path = parent.join(new_name);
+        if !new_path.exists() {
+            return new_path;
+        }
+        counter += 1;
+    }
+}
+```
+
+### 路径操作对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 拼接            │ path.join()          │ Path() / "x"         │ filepath.Join()      │ path.join()          │
+│ 父目录          │ path.dirname()       │ .parent              │ filepath.Dir()       │ .parent()            │
+│ 文件名          │ path.basename()      │ .name                │ filepath.Base()      │ .file_name()         │
+│ 无扩展名        │ 手动处理             │ .stem                │ 手动处理             │ .file_stem()         │
+│ 扩展名          │ path.extname()       │ .suffix              │ filepath.Ext()       │ .extension()         │
+│ 改扩展名        │ 手动处理             │ .with_suffix()       │ 手动处理             │ .with_extension()    │
+│ 绝对路径        │ path.resolve()       │ .resolve()           │ filepath.Abs()       │ fs::canonicalize()   │
+│ 相对路径        │ path.relative()      │ .relative_to()       │ filepath.Rel()       │ pathdiff             │
+│ 是否绝对        │ path.isAbsolute()    │ .is_absolute()       │ filepath.IsAbs()     │ .is_absolute()       │
+│ 规范化          │ path.normalize()     │ .resolve()           │ filepath.Clean()     │ fs::canonicalize()   │
+│ Glob            │ glob 库              │ .glob() / .rglob()   │ filepath.Glob()      │ glob crate           │
+│ 遍历            │ fs.readdir           │ .iterdir()           │ filepath.WalkDir     │ walkdir crate        │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 路径安全最佳实践
+
+| 风险 | 说明 | 防御 |
+|------|------|------|
+| **目录遍历** | 用户输入 `../../../etc/passwd` | 规范化后检查是否在基目录内 |
+| **空字节注入** | 路径中包含 `\0` | 验证输入不含空字节 |
+| **符号链接** | 符号链接指向敏感文件 | 使用 `canonicalize` 解析真实路径 |
+| **路径过长** | 超过系统限制 | 检查路径长度 |
+| **特殊字符** | Windows 保留名如 `CON`, `NUL` | 过滤或拒绝 |
+
 ---
 
 ## 🌐 HTTP 客户端 (Fetch)
