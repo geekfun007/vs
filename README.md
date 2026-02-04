@@ -9200,6 +9200,655 @@ Some(1).and(Some(2));  // Some(2)
 
 ---
 
+## 📍 变量作用域与代码块
+
+### 作用域概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 块级作用域 | ✅ `let/const` | ❌ | ✅ | ✅ |
+| 函数作用域 | ✅ `var` | ✅ | ✅ | ✅ |
+| 全局作用域 | ✅ | ✅ | ✅ (包级) | ✅ (crate级) |
+| 变量提升 | ✅ `var` | ❌ | ❌ | ❌ |
+| 暂时性死区 | ✅ `let/const` | ❌ | ❌ | ❌ |
+| 变量遮蔽 | ✅ | ✅ (嵌套) | ✅ `:=` | ✅ |
+| 块表达式 | ❌ | ❌ | ❌ | ✅ |
+
+### 作用域图解
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              作用域层级                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 全局/模块作用域                                                      │   │
+│  │                                                                     │   │
+│  │  ┌─────────────────────────────────────────────────────────────┐   │   │
+│  │  │ 函数作用域                                                   │   │   │
+│  │  │                                                             │   │   │
+│  │  │  ┌─────────────────────────────────────────────────────┐   │   │   │
+│  │  │  │ 块作用域 (if/for/while/{})                          │   │   │   │
+│  │  │  │                                                     │   │   │   │
+│  │  │  │  ┌─────────────────────────────────────────────┐   │   │   │   │
+│  │  │  │  │ 嵌套块作用域                                 │   │   │   │   │
+│  │  │  │  │  内层可访问外层变量                          │   │   │   │   │
+│  │  │  │  │  外层不可访问内层变量                        │   │   │   │   │
+│  │  │  │  └─────────────────────────────────────────────┘   │   │   │   │
+│  │  │  └─────────────────────────────────────────────────────┘   │   │   │
+│  │  └─────────────────────────────────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### TypeScript 作用域
+
+```typescript
+// ==================== var vs let vs const ====================
+// var - 函数作用域，有变量提升
+function varExample() {
+    console.log(x);  // undefined (提升但未初始化)
+    var x = 10;
+    
+    if (true) {
+        var x = 20;  // 同一个 x
+    }
+    console.log(x);  // 20
+}
+
+// let - 块级作用域，暂时性死区
+function letExample() {
+    // console.log(x);  // ReferenceError: 暂时性死区
+    let x = 10;
+    
+    if (true) {
+        let x = 20;  // 新的 x
+        console.log(x);  // 20
+    }
+    console.log(x);  // 10
+}
+
+// const - 块级作用域，不可重新赋值
+function constExample() {
+    const x = 10;
+    // x = 20;  // TypeError
+    
+    const obj = { a: 1 };
+    obj.a = 2;  // OK，可以修改属性
+    // obj = {};  // TypeError
+}
+
+// ==================== 块级作用域 {} ====================
+{
+    let blockScoped = "只在块内可见";
+    const alsoBlockScoped = "同样只在块内";
+    var notBlockScoped = "函数作用域";
+}
+// console.log(blockScoped);  // ReferenceError
+console.log(notBlockScoped);  // OK
+
+// ==================== 循环中的作用域 ====================
+// var 的经典陷阱
+for (var i = 0; i < 3; i++) {
+    setTimeout(() => console.log(i), 100);
+}
+// 输出: 3, 3, 3 (都是同一个 i)
+
+// let 解决问题
+for (let i = 0; i < 3; i++) {
+    setTimeout(() => console.log(i), 100);
+}
+// 输出: 0, 1, 2 (每次迭代新的 i)
+
+// ==================== 变量遮蔽 (Shadowing) ====================
+let value = 10;
+
+function outer() {
+    let value = 20;  // 遮蔽外层
+    
+    function inner() {
+        let value = 30;  // 再次遮蔽
+        console.log(value);  // 30
+    }
+    
+    inner();
+    console.log(value);  // 20
+}
+
+outer();
+console.log(value);  // 10
+
+// ==================== 闭包与作用域 ====================
+function createCounter() {
+    let count = 0;  // 被闭包捕获
+    
+    return {
+        increment: () => ++count,
+        decrement: () => --count,
+        getCount: () => count,
+    };
+}
+
+const counter = createCounter();
+counter.increment();
+counter.increment();
+console.log(counter.getCount());  // 2
+
+// ==================== 立即执行函数 (IIFE) ====================
+// 创建独立作用域
+(function() {
+    var privateVar = "不污染全局";
+    // ...
+})();
+
+// 现代替代：块 + let/const
+{
+    let privateVar = "不污染全局";
+    // ...
+}
+
+// ==================== 全局作用域 ====================
+// 浏览器: window
+// Node.js: global
+// 通用: globalThis
+
+globalThis.myGlobal = "全局变量";
+
+// 避免污染全局
+// 使用模块系统代替全局变量
+```
+
+### Python 作用域
+
+```python
+# ==================== LEGB 规则 ====================
+# Local -> Enclosing -> Global -> Built-in
+
+# Built-in (内置)
+print  # 内置函数
+
+# Global (全局/模块级)
+global_var = "全局变量"
+
+def outer():
+    # Enclosing (闭包)
+    enclosing_var = "闭包变量"
+    
+    def inner():
+        # Local (局部)
+        local_var = "局部变量"
+        
+        print(local_var)      # Local
+        print(enclosing_var)  # Enclosing
+        print(global_var)     # Global
+        print(len)            # Built-in
+
+# ==================== Python 没有块级作用域！ ====================
+if True:
+    x = 10  # 不是块级变量！
+
+print(x)  # 10 - 可以访问
+
+for i in range(3):
+    y = i
+
+print(i, y)  # 2, 2 - 循环变量泄漏
+
+# 列表推导式有自己的作用域 (Python 3)
+[z for z in range(3)]
+# print(z)  # NameError in Python 3 (Python 2 会泄漏)
+
+# ==================== global 关键字 ====================
+counter = 0
+
+def increment():
+    global counter  # 声明使用全局变量
+    counter += 1
+
+increment()
+print(counter)  # 1
+
+# 不使用 global
+def bad_increment():
+    # counter += 1  # UnboundLocalError
+    # 赋值会创建局部变量，但右侧引用了未定义的局部变量
+    pass
+
+# ==================== nonlocal 关键字 ====================
+def outer():
+    count = 0
+    
+    def inner():
+        nonlocal count  # 声明使用闭包变量
+        count += 1
+        return count
+    
+    return inner
+
+counter = outer()
+print(counter())  # 1
+print(counter())  # 2
+
+# ==================== 闭包陷阱 ====================
+# 经典错误
+functions = []
+for i in range(3):
+    functions.append(lambda: i)
+
+print([f() for f in functions])  # [2, 2, 2] - 都是最后的 i
+
+# 解决方案 1: 默认参数捕获
+functions = []
+for i in range(3):
+    functions.append(lambda i=i: i)  # i=i 捕获当前值
+
+print([f() for f in functions])  # [0, 1, 2]
+
+# 解决方案 2: 使用 functools.partial
+from functools import partial
+
+functions = []
+for i in range(3):
+    functions.append(partial(lambda x: x, i))
+
+# ==================== 模拟块级作用域 ====================
+# 方法 1: 函数
+def block():
+    x = "块内变量"
+    return x
+
+# 方法 2: 删除变量
+if True:
+    temp = expensive_computation()
+    result = process(temp)
+    del temp  # 手动清理
+
+# ==================== 类作用域 ====================
+class MyClass:
+    class_var = "类变量"  # 类级别
+    
+    def __init__(self):
+        self.instance_var = "实例变量"  # 实例级别
+    
+    def method(self):
+        local_var = "局部变量"  # 方法内局部
+        print(self.class_var)     # 通过 self 访问
+        print(MyClass.class_var)  # 通过类名访问
+```
+
+### Go 作用域
+
+```go
+// ==================== 块级作用域 ====================
+func blockScope() {
+    x := 10
+    
+    {
+        y := 20  // 只在块内可见
+        x := 30  // 遮蔽外层 x
+        fmt.Println(x, y)  // 30, 20
+    }
+    
+    // fmt.Println(y)  // 编译错误: undefined
+    fmt.Println(x)  // 10
+}
+
+// ==================== if/for/switch 作用域 ====================
+func controlScope() {
+    // if 初始化语句的变量只在 if 块内可见
+    if x := compute(); x > 0 {
+        fmt.Println(x)
+    } else {
+        fmt.Println(-x)
+    }
+    // fmt.Println(x)  // 编译错误
+    
+    // for 的变量只在循环内可见
+    for i := 0; i < 3; i++ {
+        fmt.Println(i)
+    }
+    // fmt.Println(i)  // 编译错误
+    
+    // switch 初始化
+    switch x := getValue(); x {
+    case 1:
+        fmt.Println("one")
+    default:
+        fmt.Println(x)
+    }
+}
+
+// ==================== 变量遮蔽 (Shadowing) ====================
+var x = 10  // 包级变量
+
+func shadowExample() {
+    fmt.Println(x)  // 10 - 包级
+    
+    x := 20  // 遮蔽包级变量
+    fmt.Println(x)  // 20
+    
+    {
+        x := 30  // 再次遮蔽
+        fmt.Println(x)  // 30
+    }
+    
+    fmt.Println(x)  // 20
+}
+
+// 常见陷阱: 短声明遮蔽
+func shadowTrap() error {
+    var err error
+    
+    if true {
+        result, err := doSomething()  // 新的 err，遮蔽外层！
+        if err != nil {
+            return err
+        }
+        _ = result
+    }
+    
+    return err  // 始终为 nil！
+}
+
+// 正确做法
+func shadowFixed() error {
+    var err error
+    var result int
+    
+    if true {
+        result, err = doSomething()  // = 不是 :=
+        if err != nil {
+            return err
+        }
+    }
+    
+    _ = result
+    return err
+}
+
+// ==================== 包级作用域 ====================
+package mypackage
+
+var PackageVar = "包内所有文件可见"    // 大写: 导出
+var privateVar = "仅包内可见"          // 小写: 私有
+
+const PackageConst = 100
+
+func init() {
+    // 包初始化时执行
+    // 可以访问包级变量
+}
+
+// ==================== 闭包与作用域 ====================
+func closureExample() {
+    count := 0
+    
+    increment := func() int {
+        count++  // 捕获外层变量
+        return count
+    }
+    
+    fmt.Println(increment())  // 1
+    fmt.Println(increment())  // 2
+}
+
+// 循环闭包陷阱
+func loopTrap() {
+    funcs := make([]func(), 3)
+    
+    for i := 0; i < 3; i++ {
+        funcs[i] = func() {
+            fmt.Println(i)  // 都引用同一个 i
+        }
+    }
+    
+    for _, f := range funcs {
+        f()  // 3, 3, 3
+    }
+}
+
+// 解决方案 1: 参数传递
+func loopFixed1() {
+    funcs := make([]func(), 3)
+    
+    for i := 0; i < 3; i++ {
+        funcs[i] = func(n int) func() {
+            return func() { fmt.Println(n) }
+        }(i)
+    }
+}
+
+// 解决方案 2: 局部变量
+func loopFixed2() {
+    funcs := make([]func(), 3)
+    
+    for i := 0; i < 3; i++ {
+        i := i  // 创建新的局部变量
+        funcs[i] = func() {
+            fmt.Println(i)
+        }
+    }
+}
+
+// Go 1.22+ 循环变量语义改变
+// for i := 0; i < 3; i++ 的 i 在每次迭代都是新变量
+```
+
+### Rust 作用域
+
+```rust
+// ==================== 块级作用域 ====================
+fn block_scope() {
+    let x = 10;
+    
+    {
+        let y = 20;  // 只在块内可见
+        let x = 30;  // 遮蔽外层 x
+        println!("{} {}", x, y);  // 30 20
+    }  // y 在这里被 drop
+    
+    // println!("{}", y);  // 编译错误
+    println!("{}", x);  // 10
+}
+
+// ==================== 变量遮蔽 (Shadowing) ====================
+fn shadowing() {
+    let x = 5;
+    let x = x + 1;  // 遮蔽，可以改变类型
+    
+    {
+        let x = x * 2;
+        println!("{}", x);  // 12
+    }
+    
+    println!("{}", x);  // 6
+    
+    // 遮蔽可以改变类型
+    let spaces = "   ";
+    let spaces = spaces.len();  // 从 &str 变成 usize
+}
+
+// 与 mut 的区别
+fn shadowing_vs_mut() {
+    // 遮蔽: 创建新变量
+    let x = 5;
+    let x = "hello";  // OK，新类型
+    
+    // mut: 可变绑定
+    let mut y = 5;
+    y = 10;  // OK，相同类型
+    // y = "hello";  // 编译错误，类型不匹配
+}
+
+// ==================== 块表达式 ====================
+fn block_expression() {
+    // 块可以返回值
+    let x = {
+        let a = 1;
+        let b = 2;
+        a + b  // 无分号 = 返回值
+    };
+    println!("{}", x);  // 3
+    
+    // if 是表达式
+    let y = if true { 1 } else { 2 };
+    
+    // match 是表达式
+    let z = match y {
+        1 => "one",
+        _ => "other",
+    };
+    
+    // loop 可以返回值
+    let result = loop {
+        break 42;
+    };
+}
+
+// ==================== 所有权与作用域 ====================
+fn ownership_scope() {
+    let s1 = String::from("hello");
+    
+    {
+        let s2 = s1;  // s1 移动到 s2
+        println!("{}", s2);
+    }  // s2 被 drop，内存释放
+    
+    // println!("{}", s1);  // 编译错误，s1 已移动
+}
+
+// 引用的生命周期与作用域
+fn reference_scope() {
+    let r;
+    
+    {
+        let x = 5;
+        r = &x;
+        println!("{}", r);  // OK
+    }  // x 被 drop
+    
+    // println!("{}", r);  // 编译错误，x 已不存在
+}
+
+// ==================== 非词法生命周期 (NLL) ====================
+fn nll_example() {
+    let mut data = vec![1, 2, 3];
+    
+    let first = &data[0];  // 不可变借用
+    println!("{}", first);
+    // first 的生命周期在这里结束 (NLL)
+    
+    data.push(4);  // 可变借用，NLL 使这成为可能
+}
+
+// ==================== 静态与常量 ====================
+// 全局静态变量
+static GLOBAL: &str = "全局静态";
+static mut MUTABLE_GLOBAL: i32 = 0;  // 需要 unsafe 访问
+
+// 常量 (编译时求值)
+const MAX_SIZE: usize = 100;
+
+fn static_example() {
+    println!("{}", GLOBAL);
+    
+    unsafe {
+        MUTABLE_GLOBAL += 1;  // 必须 unsafe
+    }
+}
+
+// ==================== 闭包捕获 ====================
+fn closure_capture() {
+    let x = 10;
+    let y = String::from("hello");
+    
+    // 不可变借用
+    let borrow = || println!("{} {}", x, y);
+    borrow();
+    println!("{}", y);  // y 仍可用
+    
+    // 可变借用
+    let mut count = 0;
+    let mut increment = || count += 1;
+    increment();
+    increment();
+    println!("{}", count);  // 2
+    
+    // move: 获取所有权
+    let owned = move || println!("{}", y);
+    owned();
+    // println!("{}", y);  // 编译错误，y 已移动
+}
+
+// ==================== Drop 顺序 ====================
+struct Droppable(i32);
+
+impl Drop for Droppable {
+    fn drop(&mut self) {
+        println!("Dropping {}", self.0);
+    }
+}
+
+fn drop_order() {
+    let a = Droppable(1);
+    let b = Droppable(2);
+    let c = Droppable(3);
+    
+    {
+        let d = Droppable(4);
+        let e = Droppable(5);
+    }  // 输出: Dropping 5, Dropping 4 (后声明先 drop)
+    
+    println!("End of function");
+}  // 输出: Dropping 3, Dropping 2, Dropping 1
+```
+
+### 作用域对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 块作用域        │ let/const            │ ❌                   │ ✅                   │ ✅                   │
+│ 函数作用域      │ var                  │ ✅                   │ ✅                   │ ✅                   │
+│ 变量提升        │ var                  │ ❌                   │ ❌                   │ ❌                   │
+│ 循环变量        │ let 每次新建         │ 共享/泄漏            │ 共享 (1.22 前)       │ 每次新建             │
+│ 遮蔽改类型      │ ❌ (需要断言)        │ ✅                   │ ❌                   │ ✅                   │
+│ 块返回值        │ ❌                   │ ❌                   │ ❌                   │ ✅                   │
+│ 全局声明        │ 顶层/window          │ 模块顶层             │ 包级 var             │ static/const         │
+│ 修改外层变量    │ 直接修改             │ global/nonlocal      │ 直接修改             │ &mut                 │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 常见陷阱与最佳实践
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TypeScript                                                                  │
+│ • 始终使用 let/const，避免 var                                              │
+│ • 注意 for 循环中 var 的闭包问题                                            │
+│ • const 不能防止对象属性修改                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Python                                                                      │
+│ • 记住没有块级作用域，if/for 内的变量会泄漏                                 │
+│ • 闭包捕获变量引用，循环中用默认参数捕获值                                  │
+│ • 修改全局变量需要 global，闭包变量需要 nonlocal                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Go                                                                          │
+│ • 注意 := 短声明可能意外遮蔽变量                                            │
+│ • Go 1.22 前循环变量是共享的，闭包需要复制                                  │
+│ • 包级变量用于共享状态，但要注意并发安全                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Rust                                                                        │
+│ • 遮蔽是惯用法，常用于类型转换                                              │
+│ • 理解所有权与作用域的关系                                                  │
+│ • 块表达式是强大的工具，善用返回值                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 🔧 函数
 
 ### 函数特性概览
