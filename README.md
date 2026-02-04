@@ -12526,6 +12526,165 @@ fn process(id: u32) -> Result<()> {
 
 ---
 
+## 📁 文件系统与 IO
+
+### IO 操作概览
+
+| 特性 | TypeScript (Node) | Python | Go | Rust |
+|------|-------------------|--------|-----|------|
+| 同步读写 | `fs.readFileSync` | `open().read()` | `os.ReadFile` | `std::fs::read` |
+| 异步读写 | `fs/promises` | `aiofiles` | goroutine | `tokio::fs` |
+| 流式读写 | `createReadStream` | 迭代器 | `bufio` | `BufReader` |
+| 路径处理 | `path` | `pathlib` | `filepath` | `std::path` |
+| 目录操作 | `fs.mkdir/readdir` | `os/pathlib` | `os` | `std::fs` |
+
+### TypeScript 文件操作
+
+```typescript
+import * as fs from 'fs';
+import * as fsp from 'fs/promises';
+import * as path from 'path';
+
+// ==================== 同步操作 ====================
+const content = fs.readFileSync('file.txt', 'utf-8');
+fs.writeFileSync('output.txt', 'Hello World');
+fs.appendFileSync('log.txt', 'New line\n');
+
+// ==================== 异步操作 (Promise) ====================
+const content = await fsp.readFile('file.txt', 'utf-8');
+await fsp.writeFile('output.txt', 'Hello World');
+
+// ==================== 流式操作 ====================
+import { createReadStream, createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
+
+const readStream = createReadStream('large-file.txt');
+for await (const chunk of readStream) {
+    process(chunk);
+}
+
+await pipeline(
+    createReadStream('source.txt'),
+    createWriteStream('dest.txt')
+);
+
+// ==================== 目录操作 ====================
+await fsp.mkdir('new-dir', { recursive: true });
+const entries = await fsp.readdir('.', { withFileTypes: true });
+await fsp.rm('dir', { recursive: true });
+
+// ==================== 路径处理 ====================
+path.join('dir', 'subdir', 'file.txt');
+path.resolve('relative');
+path.dirname('/a/b/c.txt');   // /a/b
+path.basename('/a/b/c.txt');  // c.txt
+path.extname('file.txt');     // .txt
+```
+
+### Python 文件操作
+
+```python
+from pathlib import Path
+import aiofiles
+
+# ==================== 同步操作 ====================
+content = Path('file.txt').read_text(encoding='utf-8')
+Path('output.txt').write_text('Hello World')
+
+with open('file.txt', 'r') as f:
+    for line in f:
+        print(line.strip())
+
+# ==================== 异步操作 ====================
+async with aiofiles.open('file.txt', 'r') as f:
+    content = await f.read()
+
+# ==================== pathlib (推荐) ====================
+p = Path('dir/subdir/file.txt')
+p.parent          # dir/subdir
+p.name            # file.txt
+p.suffix          # .txt
+new_path = Path('dir') / 'subdir' / 'file.txt'
+
+# ==================== 目录操作 ====================
+Path('new-dir').mkdir(parents=True, exist_ok=True)
+list(Path('.').rglob('*.py'))  # 递归查找
+import shutil
+shutil.rmtree('dir')
+```
+
+### Go 文件操作
+
+```go
+import (
+    "bufio"
+    "io"
+    "os"
+    "path/filepath"
+)
+
+// ==================== 同步操作 ====================
+content, _ := os.ReadFile("file.txt")
+os.WriteFile("output.txt", []byte("Hello"), 0644)
+
+// ==================== 缓冲读写 ====================
+f, _ := os.Open("file.txt")
+defer f.Close()
+scanner := bufio.NewScanner(f)
+for scanner.Scan() {
+    fmt.Println(scanner.Text())
+}
+
+// ==================== 目录操作 ====================
+os.MkdirAll("path/to/dir", 0755)
+entries, _ := os.ReadDir(".")
+filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+    fmt.Println(path)
+    return nil
+})
+
+// ==================== 路径处理 ====================
+filepath.Join("dir", "subdir", "file.txt")
+filepath.Dir("/a/b/c.txt")   // /a/b
+filepath.Base("/a/b/c.txt")  // c.txt
+```
+
+### Rust 文件操作
+
+```rust
+use std::fs;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+
+// ==================== 同步操作 ====================
+let content = fs::read_to_string("file.txt")?;
+fs::write("output.txt", "Hello World")?;
+
+// ==================== 缓冲读取 ====================
+let file = fs::File::open("file.txt")?;
+for line in BufReader::new(file).lines() {
+    println!("{}", line?);
+}
+
+// ==================== 异步操作 (tokio) ====================
+let content = tokio::fs::read_to_string("file.txt").await?;
+tokio::fs::write("output.txt", "Hello").await?;
+
+// ==================== 目录操作 ====================
+fs::create_dir_all("path/to/dir")?;
+for entry in fs::read_dir(".")? {
+    println!("{:?}", entry?.path());
+}
+
+// ==================== 路径处理 ====================
+let path = Path::new("dir").join("file.txt");
+path.parent();      // Some("dir")
+path.file_name();   // Some("file.txt")
+path.extension();   // Some("txt")
+```
+
+---
+
 ## 🌐 HTTP 客户端 (Fetch)
 
 ### HTTP 客户端概览
@@ -12980,6 +13139,714 @@ impl UserService for MyUserService {
         }))
     }
 }
+```
+
+### Web 框架详细对比 (Koa vs FastAPI vs Gin vs Axum)
+
+#### 路由参数 (Path Parameters)
+
+```typescript
+// ==================== Koa (koa-router) ====================
+import Router from '@koa/router';
+const router = new Router();
+
+router.get('/users/:id', async (ctx) => {
+    const id = ctx.params.id;
+    ctx.body = { id };
+});
+
+router.get('/posts/:year/:month', async (ctx) => {
+    const { year, month } = ctx.params;
+    ctx.body = { year, month };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import FastAPI, Path
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: int):  # 自动类型转换
+    return {"user_id": user_id}
+
+@app.get("/posts/{year}/{month}")
+async def get_posts(
+    year: int = Path(..., ge=2000, le=2100),  # 验证
+    month: int = Path(..., ge=1, le=12)
+):
+    return {"year": year, "month": month}
+```
+
+```go
+// ==================== Gin ====================
+r := gin.Default()
+
+r.GET("/users/:id", func(c *gin.Context) {
+    id := c.Param("id")
+    c.JSON(200, gin.H{"id": id})
+})
+
+r.GET("/posts/:year/:month", func(c *gin.Context) {
+    year := c.Param("year")
+    month := c.Param("month")
+    c.JSON(200, gin.H{"year": year, "month": month})
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{extract::Path, routing::get, Router};
+
+async fn get_user(Path(id): Path<u32>) -> String {
+    format!("User {}", id)
+}
+
+async fn get_posts(Path((year, month)): Path<(u32, u32)>) -> String {
+    format!("{}/{}", year, month)
+}
+
+let app = Router::new()
+    .route("/users/:id", get(get_user))
+    .route("/posts/:year/:month", get(get_posts));
+```
+
+#### 查询参数 (Query Parameters)
+
+```typescript
+// ==================== Koa ====================
+router.get('/search', async (ctx) => {
+    const { q, page = '1', limit = '10' } = ctx.query;
+    ctx.body = { q, page: parseInt(page), limit: parseInt(limit) };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Query
+from typing import Optional
+
+@app.get("/search")
+async def search(
+    q: str,                                    # 必填
+    page: int = 1,                            # 默认值
+    limit: int = Query(10, ge=1, le=100),     # 带验证
+    tags: Optional[list[str]] = Query(None)   # 可选列表
+):
+    return {"q": q, "page": page, "limit": limit, "tags": tags}
+```
+
+```go
+// ==================== Gin ====================
+type SearchQuery struct {
+    Q     string   `form:"q" binding:"required"`
+    Page  int      `form:"page,default=1"`
+    Limit int      `form:"limit,default=10"`
+    Tags  []string `form:"tags"`
+}
+
+r.GET("/search", func(c *gin.Context) {
+    var query SearchQuery
+    if err := c.ShouldBindQuery(&query); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(200, query)
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::extract::Query;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+    #[serde(default = "default_page")]
+    page: u32,
+    #[serde(default = "default_limit")]
+    limit: u32,
+}
+
+fn default_page() -> u32 { 1 }
+fn default_limit() -> u32 { 10 }
+
+async fn search(Query(query): Query<SearchQuery>) -> String {
+    format!("Search: {} page {}", query.q, query.page)
+}
+```
+
+#### 请求头 (Headers)
+
+```typescript
+// ==================== Koa ====================
+router.get('/api', async (ctx) => {
+    const auth = ctx.get('Authorization');
+    const contentType = ctx.get('Content-Type');
+    const userAgent = ctx.request.headers['user-agent'];
+    
+    ctx.set('X-Custom-Header', 'value');
+    ctx.body = { auth };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Header
+
+@app.get("/api")
+async def api(
+    authorization: str = Header(...),
+    user_agent: str = Header(None, alias="User-Agent"),
+    x_token: list[str] = Header(None)
+):
+    return {"auth": authorization}
+
+# 响应头
+from fastapi import Response
+
+@app.get("/download")
+async def download(response: Response):
+    response.headers["X-Custom"] = "value"
+    return {"file": "data"}
+```
+
+```go
+// ==================== Gin ====================
+r.GET("/api", func(c *gin.Context) {
+    auth := c.GetHeader("Authorization")
+    userAgent := c.Request.Header.Get("User-Agent")
+    
+    c.Header("X-Custom-Header", "value")
+    c.JSON(200, gin.H{"auth": auth})
+})
+
+// 绑定到结构体
+type Headers struct {
+    Authorization string `header:"Authorization" binding:"required"`
+    UserAgent     string `header:"User-Agent"`
+}
+
+r.GET("/api", func(c *gin.Context) {
+    var h Headers
+    c.ShouldBindHeader(&h)
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::http::{HeaderMap, header};
+use axum_extra::TypedHeader;
+use headers::Authorization;
+
+async fn api(
+    TypedHeader(auth): TypedHeader<Authorization<headers::authorization::Bearer>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user_agent = headers.get(header::USER_AGENT);
+    
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        format!("Token: {}", auth.token())
+    )
+}
+```
+
+#### 请求体 (Body)
+
+```typescript
+// ==================== Koa (koa-bodyparser) ====================
+import bodyParser from 'koa-bodyparser';
+app.use(bodyParser());
+
+router.post('/users', async (ctx) => {
+    const body = ctx.request.body;  // JSON 自动解析
+    ctx.body = body;
+});
+
+// 文件上传 (koa-multer)
+import multer from '@koa/multer';
+const upload = multer({ dest: 'uploads/' });
+
+router.post('/upload', upload.single('file'), async (ctx) => {
+    const file = ctx.request.file;
+    ctx.body = { filename: file.filename };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from pydantic import BaseModel, Field
+
+class CreateUser(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: str
+    age: int = Field(None, ge=0, le=150)
+
+@app.post("/users")
+async def create_user(user: CreateUser):  # 自动验证
+    return user
+
+# 原始 body
+from fastapi import Body
+
+@app.post("/raw")
+async def raw_body(data: dict = Body(...)):
+    return data
+
+# 文件上传
+from fastapi import File, UploadFile
+
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    content = await file.read()
+    return {"filename": file.filename, "size": len(content)}
+```
+
+```go
+// ==================== Gin ====================
+type CreateUser struct {
+    Name  string `json:"name" binding:"required,min=1,max=100"`
+    Email string `json:"email" binding:"required,email"`
+    Age   int    `json:"age" binding:"gte=0,lte=150"`
+}
+
+r.POST("/users", func(c *gin.Context) {
+    var user CreateUser
+    if err := c.ShouldBindJSON(&user); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(201, user)
+})
+
+// 文件上传
+r.POST("/upload", func(c *gin.Context) {
+    file, _ := c.FormFile("file")
+    c.SaveUploadedFile(file, "uploads/"+file.Filename)
+    c.JSON(200, gin.H{"filename": file.Filename})
+})
+
+// 多文件
+r.POST("/uploads", func(c *gin.Context) {
+    form, _ := c.MultipartForm()
+    files := form.File["files"]
+    for _, file := range files {
+        c.SaveUploadedFile(file, "uploads/"+file.Filename)
+    }
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{Json, extract::Multipart};
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+struct CreateUser {
+    name: String,
+    email: String,
+    age: Option<u32>,
+}
+
+async fn create_user(Json(user): Json<CreateUser>) -> Json<CreateUser> {
+    Json(user)
+}
+
+// 文件上传
+async fn upload(mut multipart: Multipart) -> String {
+    while let Some(field) = multipart.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+        println!("Field: {} Size: {}", name, data.len());
+    }
+    "OK".to_string()
+}
+```
+
+#### 应用状态 (State)
+
+```typescript
+// ==================== Koa ====================
+// 方式1: app.context
+app.context.db = database;
+
+router.get('/users', async (ctx) => {
+    const users = await ctx.db.getUsers();
+    ctx.body = users;
+});
+
+// 方式2: 中间件注入
+app.use(async (ctx, next) => {
+    ctx.state.db = database;
+    ctx.state.config = config;
+    await next();
+});
+
+router.get('/users', async (ctx) => {
+    const users = await ctx.state.db.getUsers();
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Depends
+
+# 依赖注入
+def get_db():
+    db = Database()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.get("/users")
+async def get_users(db: Database = Depends(get_db)):
+    return await db.get_users()
+
+# app.state
+app.state.config = Config()
+
+@app.get("/config")
+async def get_config(request: Request):
+    return request.app.state.config
+```
+
+```go
+// ==================== Gin ====================
+// 方式1: 中间件
+func DatabaseMiddleware(db *Database) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Set("db", db)
+        c.Next()
+    }
+}
+
+r.Use(DatabaseMiddleware(db))
+
+r.GET("/users", func(c *gin.Context) {
+    db := c.MustGet("db").(*Database)
+    users := db.GetUsers()
+    c.JSON(200, users)
+})
+
+// 方式2: 闭包
+func SetupRoutes(db *Database) *gin.Engine {
+    r := gin.Default()
+    
+    r.GET("/users", func(c *gin.Context) {
+        users := db.GetUsers()  // 直接使用
+        c.JSON(200, users)
+    })
+    
+    return r
+}
+```
+
+```rust
+// ==================== Axum ====================
+use axum::extract::State;
+use std::sync::Arc;
+
+struct AppState {
+    db: Database,
+    config: Config,
+}
+
+async fn get_users(State(state): State<Arc<AppState>>) -> Json<Vec<User>> {
+    let users = state.db.get_users().await;
+    Json(users)
+}
+
+let state = Arc::new(AppState { db, config });
+let app = Router::new()
+    .route("/users", get(get_users))
+    .with_state(state);
+```
+
+#### 路由分组 (Router Groups)
+
+```typescript
+// ==================== Koa ====================
+const apiRouter = new Router({ prefix: '/api/v1' });
+const adminRouter = new Router({ prefix: '/admin' });
+
+apiRouter.get('/users', getUsers);
+apiRouter.post('/users', createUser);
+
+adminRouter.get('/stats', getStats);
+adminRouter.use(authMiddleware);  // 组级中间件
+
+app.use(apiRouter.routes());
+app.use(adminRouter.routes());
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import APIRouter
+
+# 创建路由组
+users_router = APIRouter(prefix="/users", tags=["users"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
+
+@users_router.get("/")
+async def list_users():
+    return []
+
+@users_router.get("/{id}")
+async def get_user(id: int):
+    return {"id": id}
+
+@admin_router.get("/stats")
+async def stats():
+    return {"count": 100}
+
+# 注册路由组
+app.include_router(users_router, prefix="/api/v1")
+app.include_router(admin_router, dependencies=[Depends(auth)])
+```
+
+```go
+// ==================== Gin ====================
+r := gin.Default()
+
+// API v1 组
+v1 := r.Group("/api/v1")
+{
+    v1.GET("/users", listUsers)
+    v1.POST("/users", createUser)
+    
+    // 嵌套组
+    users := v1.Group("/users")
+    {
+        users.GET("/:id", getUser)
+        users.PUT("/:id", updateUser)
+        users.DELETE("/:id", deleteUser)
+    }
+}
+
+// Admin 组 (带中间件)
+admin := r.Group("/admin")
+admin.Use(AuthMiddleware())
+{
+    admin.GET("/stats", getStats)
+    admin.GET("/users", adminListUsers)
+}
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{routing::{get, post}, Router};
+
+// 子路由
+fn users_routes() -> Router<AppState> {
+    Router::new()
+        .route("/", get(list_users).post(create_user))
+        .route("/:id", get(get_user).put(update_user).delete(delete_user))
+}
+
+fn admin_routes() -> Router<AppState> {
+    Router::new()
+        .route("/stats", get(stats))
+        .layer(middleware::from_fn(auth_middleware))
+}
+
+let app = Router::new()
+    .nest("/api/v1/users", users_routes())
+    .nest("/admin", admin_routes())
+    .with_state(state);
+```
+
+#### 中间件 (Middleware)
+
+```typescript
+// ==================== Koa ====================
+// 日志中间件
+app.use(async (ctx, next) => {
+    const start = Date.now();
+    await next();
+    const ms = Date.now() - start;
+    console.log(`${ctx.method} ${ctx.url} - ${ms}ms`);
+});
+
+// 错误处理
+app.use(async (ctx, next) => {
+    try {
+        await next();
+    } catch (err) {
+        ctx.status = err.status || 500;
+        ctx.body = { error: err.message };
+    }
+});
+
+// 认证中间件
+const auth = async (ctx, next) => {
+    const token = ctx.get('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+        ctx.throw(401, 'Unauthorized');
+    }
+    ctx.state.user = await verifyToken(token);
+    await next();
+};
+
+router.get('/protected', auth, async (ctx) => {
+    ctx.body = { user: ctx.state.user };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+import time
+
+# 自定义中间件
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        duration = time.time() - start
+        response.headers["X-Process-Time"] = str(duration)
+        return response
+
+app.add_middleware(TimingMiddleware)
+
+# CORS 中间件
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 依赖作为中间件
+async def verify_token(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Invalid token")
+    return decode_token(authorization[7:])
+
+@app.get("/protected")
+async def protected(user: User = Depends(verify_token)):
+    return {"user": user}
+```
+
+```go
+// ==================== Gin ====================
+// 日志中间件
+func Logger() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        start := time.Now()
+        
+        c.Next()  // 处理请求
+        
+        latency := time.Since(start)
+        status := c.Writer.Status()
+        log.Printf("%s %s %d %v", c.Request.Method, c.Request.URL, status, latency)
+    }
+}
+
+// 错误恢复
+func Recovery() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        defer func() {
+            if err := recover(); err != nil {
+                c.JSON(500, gin.H{"error": "Internal Server Error"})
+                c.Abort()
+            }
+        }()
+        c.Next()
+    }
+}
+
+// 认证中间件
+func Auth() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        token := c.GetHeader("Authorization")
+        if token == "" {
+            c.JSON(401, gin.H{"error": "Unauthorized"})
+            c.Abort()
+            return
+        }
+        user, err := verifyToken(token)
+        if err != nil {
+            c.JSON(401, gin.H{"error": "Invalid token"})
+            c.Abort()
+            return
+        }
+        c.Set("user", user)
+        c.Next()
+    }
+}
+
+r.Use(Logger(), Recovery())
+r.GET("/protected", Auth(), protectedHandler)
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{
+    middleware::{self, Next},
+    response::Response,
+    http::Request,
+};
+use std::time::Instant;
+
+// 日志中间件
+async fn logging<B>(req: Request<B>, next: Next<B>) -> Response {
+    let start = Instant::now();
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    
+    let response = next.run(req).await;
+    
+    let duration = start.elapsed();
+    println!("{} {} - {:?}", method, uri, duration);
+    
+    response
+}
+
+// 认证中间件
+async fn auth<B>(
+    mut req: Request<B>,
+    next: Next<B>,
+) -> Result<Response, StatusCode> {
+    let token = req.headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    
+    let user = verify_token(token)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    
+    req.extensions_mut().insert(user);
+    Ok(next.run(req).await)
+}
+
+let app = Router::new()
+    .route("/protected", get(protected))
+    .layer(middleware::from_fn(auth))
+    .layer(middleware::from_fn(logging));
+```
+
+### Web 框架对比表
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 功能            │ Koa                  │ FastAPI              │ Gin                  │ Axum                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 路由参数        │ ctx.params           │ 函数参数             │ c.Param              │ Path extractor       │
+│ 查询参数        │ ctx.query            │ Query                │ c.ShouldBindQuery    │ Query extractor      │
+│ 请求头          │ ctx.get()            │ Header               │ c.GetHeader          │ TypedHeader          │
+│ 请求体          │ ctx.request.body     │ BaseModel            │ c.ShouldBindJSON     │ Json extractor       │
+│ 应用状态        │ ctx.state            │ Depends / app.state  │ c.Set / c.Get        │ State extractor      │
+│ 路由分组        │ Router prefix        │ APIRouter            │ r.Group              │ Router::nest         │
+│ 中间件          │ app.use(fn)          │ add_middleware       │ r.Use                │ .layer               │
+│ 验证            │ 第三方库             │ Pydantic             │ binding tag          │ validator crate      │
+│ 自动文档        │ ❌                   │ ✅ OpenAPI           │ swag                 │ utoipa               │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
 ```
 
 ---
