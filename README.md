@@ -12526,6 +12526,632 @@ fn process(id: u32) -> Result<()> {
 
 ---
 
+## 📋 JSON 处理
+
+### JSON 操作概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 解析 | `JSON.parse` | `json.loads` | `json.Unmarshal` | `serde_json::from_str` |
+| 序列化 | `JSON.stringify` | `json.dumps` | `json.Marshal` | `serde_json::to_string` |
+| 类型映射 | `interface`/`type` | `TypedDict`/`dataclass` | `struct` + tags | `struct` + `#[derive]` |
+| 流式解析 | 第三方库 | `ijson` | `json.Decoder` | `serde_json::StreamDeserializer` |
+| 动态访问 | 原生支持 | 原生支持 | `map[string]any` | `serde_json::Value` |
+
+### TypeScript JSON 操作
+
+```typescript
+// ==================== 基本解析与序列化 ====================
+// 解析 JSON 字符串
+const jsonStr = '{"name":"Alice","age":30}';
+const obj = JSON.parse(jsonStr);
+console.log(obj.name);  // "Alice"
+
+// 序列化为 JSON
+const user = { name: "Bob", age: 25 };
+const str = JSON.stringify(user);
+// '{"name":"Bob","age":25}'
+
+// 格式化输出
+JSON.stringify(user, null, 2);
+// {
+//   "name": "Bob",
+//   "age": 25
+// }
+
+// ==================== 类型安全解析 ====================
+interface User {
+    name: string;
+    age: number;
+    email?: string;
+}
+
+// 简单断言 (不安全)
+const user1 = JSON.parse(jsonStr) as User;
+
+// 类型守卫 (安全)
+function isUser(obj: unknown): obj is User {
+    return (
+        typeof obj === 'object' &&
+        obj !== null &&
+        'name' in obj &&
+        'age' in obj &&
+        typeof (obj as User).name === 'string' &&
+        typeof (obj as User).age === 'number'
+    );
+}
+
+const parsed = JSON.parse(jsonStr);
+if (isUser(parsed)) {
+    console.log(parsed.name);  // 类型安全
+}
+
+// 使用 zod 验证
+import { z } from 'zod';
+
+const UserSchema = z.object({
+    name: z.string(),
+    age: z.number().int().positive(),
+    email: z.string().email().optional(),
+});
+
+type User = z.infer<typeof UserSchema>;
+
+const result = UserSchema.safeParse(JSON.parse(jsonStr));
+if (result.success) {
+    console.log(result.data.name);
+}
+
+// ==================== 自定义序列化 ====================
+const user = {
+    name: "Alice",
+    password: "secret",
+    createdAt: new Date(),
+};
+
+// replacer 函数过滤字段
+JSON.stringify(user, (key, value) => {
+    if (key === 'password') return undefined;
+    return value;
+});
+// {"name":"Alice","createdAt":"2024-01-01T00:00:00.000Z"}
+
+// replacer 数组指定字段
+JSON.stringify(user, ['name', 'createdAt']);
+
+// toJSON 方法
+class User {
+    constructor(public name: string, public password: string) {}
+    
+    toJSON() {
+        return { name: this.name };  // 排除 password
+    }
+}
+
+// reviver 自定义解析
+const data = '{"date":"2024-01-01T00:00:00.000Z"}';
+const parsed = JSON.parse(data, (key, value) => {
+    if (key === 'date') return new Date(value);
+    return value;
+});
+
+// ==================== 深拷贝 ====================
+const original = { a: 1, nested: { b: 2 } };
+const copy = JSON.parse(JSON.stringify(original));
+
+// 注意: 会丢失 undefined、函数、Symbol、循环引用
+// 使用 structuredClone 更好
+const copy2 = structuredClone(original);
+
+// ==================== 动态 JSON ====================
+const json: Record<string, unknown> = JSON.parse(dynamicStr);
+
+// 安全访问
+const name = json?.user?.name;
+
+// 类型收窄
+if (typeof json.count === 'number') {
+    console.log(json.count + 1);
+}
+```
+
+### Python JSON 操作
+
+```python
+import json
+from typing import TypedDict, Any
+from dataclasses import dataclass, asdict
+from pydantic import BaseModel
+
+# ==================== 基本解析与序列化 ====================
+# 解析 JSON 字符串
+json_str = '{"name": "Alice", "age": 30}'
+data = json.loads(json_str)
+print(data['name'])  # "Alice"
+
+# 序列化为 JSON
+user = {"name": "Bob", "age": 25}
+json_str = json.dumps(user)
+
+# 格式化输出
+json.dumps(user, indent=2)
+json.dumps(user, indent=2, ensure_ascii=False)  # 支持中文
+
+# 文件读写
+with open('data.json', 'r') as f:
+    data = json.load(f)
+
+with open('output.json', 'w') as f:
+    json.dump(data, f, indent=2)
+
+# ==================== 类型化 JSON ====================
+# TypedDict
+class User(TypedDict):
+    name: str
+    age: int
+    email: str | None
+
+user: User = json.loads(json_str)  # 类型提示，无运行时检查
+
+# dataclass
+@dataclass
+class User:
+    name: str
+    age: int
+    email: str | None = None
+
+# 解析
+data = json.loads(json_str)
+user = User(**data)
+
+# 序列化
+json.dumps(asdict(user))
+
+# Pydantic (推荐)
+class User(BaseModel):
+    name: str
+    age: int
+    email: str | None = None
+
+# 解析并验证
+user = User.model_validate_json(json_str)
+user = User(**json.loads(json_str))
+
+# 序列化
+user.model_dump_json()
+user.model_dump()  # 转为 dict
+
+# ==================== 自定义序列化 ====================
+from datetime import datetime
+from enum import Enum
+
+class Status(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, Enum):
+            return obj.value
+        if hasattr(obj, '__dict__'):
+            return obj.__dict__
+        return super().default(obj)
+
+data = {
+    "created": datetime.now(),
+    "status": Status.ACTIVE,
+}
+json.dumps(data, cls=CustomEncoder)
+
+# object_hook 自定义解析
+def datetime_parser(dct):
+    for key, value in dct.items():
+        if isinstance(value, str):
+            try:
+                dct[key] = datetime.fromisoformat(value)
+            except ValueError:
+                pass
+    return dct
+
+json.loads(json_str, object_hook=datetime_parser)
+
+# ==================== 动态 JSON ====================
+# 任意 JSON
+data: dict[str, Any] = json.loads(dynamic_str)
+
+# 安全访问
+name = data.get('user', {}).get('name')
+
+# 递归访问
+def get_nested(data: dict, *keys, default=None):
+    for key in keys:
+        if isinstance(data, dict):
+            data = data.get(key, default)
+        else:
+            return default
+    return data
+
+get_nested(data, 'user', 'profile', 'name')
+
+# ==================== 大 JSON 流式处理 ====================
+import ijson
+
+# 流式解析大文件
+with open('large.json', 'rb') as f:
+    for item in ijson.items(f, 'items.item'):
+        process(item)
+
+# 增量构建
+with open('output.json', 'w') as f:
+    f.write('[')
+    for i, item in enumerate(items):
+        if i > 0:
+            f.write(',')
+        json.dump(item, f)
+    f.write(']')
+```
+
+### Go JSON 操作
+
+```go
+import (
+    "encoding/json"
+    "fmt"
+)
+
+// ==================== 基本解析与序列化 ====================
+// 解析到 map
+jsonStr := `{"name":"Alice","age":30}`
+var data map[string]interface{}
+json.Unmarshal([]byte(jsonStr), &data)
+fmt.Println(data["name"])  // Alice
+
+// 解析到结构体
+type User struct {
+    Name  string `json:"name"`
+    Age   int    `json:"age"`
+    Email string `json:"email,omitempty"`  // 可选
+}
+
+var user User
+json.Unmarshal([]byte(jsonStr), &user)
+
+// 序列化
+user := User{Name: "Bob", Age: 25}
+bytes, _ := json.Marshal(user)
+
+// 格式化输出
+json.MarshalIndent(user, "", "  ")
+
+// ==================== struct tags ====================
+type User struct {
+    ID        int       `json:"id"`
+    Name      string    `json:"name"`
+    Password  string    `json:"-"`               // 忽略
+    Email     string    `json:"email,omitempty"` // 空值省略
+    CreatedAt time.Time `json:"created_at"`
+    IsAdmin   bool      `json:"is_admin,string"` // 序列化为字符串
+}
+
+// ==================== 自定义序列化 ====================
+type Status int
+
+const (
+    StatusActive Status = iota
+    StatusInactive
+)
+
+func (s Status) MarshalJSON() ([]byte, error) {
+    var str string
+    switch s {
+    case StatusActive:
+        str = "active"
+    case StatusInactive:
+        str = "inactive"
+    }
+    return json.Marshal(str)
+}
+
+func (s *Status) UnmarshalJSON(data []byte) error {
+    var str string
+    if err := json.Unmarshal(data, &str); err != nil {
+        return err
+    }
+    switch str {
+    case "active":
+        *s = StatusActive
+    case "inactive":
+        *s = StatusInactive
+    }
+    return nil
+}
+
+// 时间格式自定义
+type CustomTime time.Time
+
+func (t CustomTime) MarshalJSON() ([]byte, error) {
+    return json.Marshal(time.Time(t).Format("2006-01-02"))
+}
+
+// ==================== 动态 JSON ====================
+// 使用 map
+var data map[string]interface{}
+json.Unmarshal([]byte(jsonStr), &data)
+
+// 类型断言
+if name, ok := data["name"].(string); ok {
+    fmt.Println(name)
+}
+
+// 嵌套访问
+if user, ok := data["user"].(map[string]interface{}); ok {
+    if name, ok := user["name"].(string); ok {
+        fmt.Println(name)
+    }
+}
+
+// json.RawMessage 延迟解析
+type Response struct {
+    Type string          `json:"type"`
+    Data json.RawMessage `json:"data"`
+}
+
+var resp Response
+json.Unmarshal([]byte(jsonStr), &resp)
+
+// 根据 Type 解析 Data
+switch resp.Type {
+case "user":
+    var user User
+    json.Unmarshal(resp.Data, &user)
+case "product":
+    var product Product
+    json.Unmarshal(resp.Data, &product)
+}
+
+// ==================== 流式处理 ====================
+// Decoder 流式解析
+file, _ := os.Open("large.json")
+defer file.Close()
+
+decoder := json.NewDecoder(file)
+
+// 读取开始的 [
+decoder.Token()
+
+// 逐个读取元素
+for decoder.More() {
+    var item Item
+    decoder.Decode(&item)
+    process(item)
+}
+
+// Encoder 流式写入
+file, _ := os.Create("output.json")
+encoder := json.NewEncoder(file)
+encoder.SetIndent("", "  ")
+encoder.Encode(data)
+
+// ==================== 验证 ====================
+// 使用 go-playground/validator
+type User struct {
+    Name  string `json:"name" validate:"required,min=1,max=100"`
+    Email string `json:"email" validate:"required,email"`
+    Age   int    `json:"age" validate:"gte=0,lte=150"`
+}
+
+validate := validator.New()
+if err := validate.Struct(user); err != nil {
+    // 处理验证错误
+}
+```
+
+### Rust JSON 操作
+
+```rust
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+// ==================== 基本解析与序列化 ====================
+// 解析到结构体
+#[derive(Debug, Deserialize, Serialize)]
+struct User {
+    name: String,
+    age: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+}
+
+let json_str = r#"{"name":"Alice","age":30}"#;
+let user: User = serde_json::from_str(json_str)?;
+
+// 序列化
+let user = User { name: "Bob".into(), age: 25, email: None };
+let json = serde_json::to_string(&user)?;
+let json_pretty = serde_json::to_string_pretty(&user)?;
+
+// ==================== serde 属性 ====================
+#[derive(Deserialize, Serialize)]
+struct User {
+    #[serde(rename = "userName")]
+    name: String,
+    
+    #[serde(default)]
+    age: u32,
+    
+    #[serde(skip)]
+    password: String,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+    
+    #[serde(rename = "createdAt")]
+    #[serde(with = "chrono::serde::ts_seconds")]
+    created_at: DateTime<Utc>,
+    
+    #[serde(flatten)]
+    extra: HashMap<String, Value>,
+}
+
+// 枚举序列化
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Status {
+    Active,
+    Inactive,
+    #[serde(rename = "pending_review")]
+    PendingReview,
+}
+
+// 标签枚举
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type")]
+enum Message {
+    #[serde(rename = "text")]
+    Text { content: String },
+    #[serde(rename = "image")]
+    Image { url: String, width: u32 },
+}
+
+// ==================== 自定义序列化 ====================
+use serde::{Deserializer, Serializer};
+
+fn serialize_uppercase<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&value.to_uppercase())
+}
+
+fn deserialize_string_or_int<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt {
+        String(String),
+        Int(i64),
+    }
+    
+    match StringOrInt::deserialize(deserializer)? {
+        StringOrInt::String(s) => Ok(s),
+        StringOrInt::Int(i) => Ok(i.to_string()),
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct Data {
+    #[serde(serialize_with = "serialize_uppercase")]
+    name: String,
+    
+    #[serde(deserialize_with = "deserialize_string_or_int")]
+    id: String,
+}
+
+// ==================== 动态 JSON ====================
+// serde_json::Value
+let data: Value = serde_json::from_str(json_str)?;
+
+// 访问
+let name = data["name"].as_str();
+let age = data["user"]["age"].as_u64();
+
+// json! 宏构建
+let value = json!({
+    "name": "Alice",
+    "age": 30,
+    "tags": ["rust", "json"],
+    "active": true,
+    "metadata": null
+});
+
+// 修改
+let mut data: Value = serde_json::from_str(json_str)?;
+data["name"] = json!("Bob");
+data["extra"] = json!({"key": "value"});
+
+// 类型检查
+if data.is_object() {
+    if let Some(obj) = data.as_object() {
+        for (key, value) in obj {
+            println!("{}: {}", key, value);
+        }
+    }
+}
+
+// ==================== 流式处理 ====================
+use std::io::BufReader;
+
+// 流式读取
+let file = File::open("large.json")?;
+let reader = BufReader::new(file);
+let stream = serde_json::Deserializer::from_reader(reader)
+    .into_iter::<Value>();
+
+for item in stream {
+    let item = item?;
+    process(item);
+}
+
+// 流式写入
+let file = File::create("output.json")?;
+let mut ser = serde_json::Serializer::pretty(file);
+data.serialize(&mut ser)?;
+
+// ==================== 验证 ====================
+use validator::Validate;
+
+#[derive(Debug, Deserialize, Validate)]
+struct User {
+    #[validate(length(min = 1, max = 100))]
+    name: String,
+    
+    #[validate(email)]
+    email: String,
+    
+    #[validate(range(min = 0, max = 150))]
+    age: u32,
+}
+
+let user: User = serde_json::from_str(json_str)?;
+user.validate()?;
+```
+
+### JSON 操作对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 解析            │ JSON.parse           │ json.loads           │ json.Unmarshal       │ serde_json::from_str │
+│ 序列化          │ JSON.stringify       │ json.dumps           │ json.Marshal         │ serde_json::to_string│
+│ 格式化          │ stringify(x,null,2)  │ dumps(indent=2)      │ MarshalIndent        │ to_string_pretty     │
+│ 字段重命名      │ 手动                 │ alias                │ `json:"name"`        │ #[serde(rename)]     │
+│ 忽略字段        │ replacer             │ exclude              │ `json:"-"`           │ #[serde(skip)]       │
+│ 可选字段        │ ?: undefined         │ None                 │ omitempty            │ Option + skip_if     │
+│ 动态类型        │ any / unknown        │ dict[str, Any]       │ map[string]any       │ Value                │
+│ 验证            │ zod                  │ pydantic             │ validator            │ validator            │
+│ 流式解析        │ 第三方               │ ijson                │ json.Decoder         │ Deserializer::iter   │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### JSON 最佳实践
+
+| 场景 | 推荐做法 |
+|------|----------|
+| **API 响应** | 定义类型/结构体，使用验证库 |
+| **配置文件** | 使用类型化解析，提供默认值 |
+| **大文件** | 流式解析，避免一次性加载 |
+| **动态 JSON** | 使用 Value 类型，做好类型检查 |
+| **日期时间** | 使用 ISO 8601 格式，自定义序列化器 |
+| **敏感字段** | 使用 skip/忽略标记，不序列化 |
+| **枚举** | 序列化为字符串而非数字 |
+
+---
+
 ## 📁 文件系统与 IO
 
 ### IO 操作概览
