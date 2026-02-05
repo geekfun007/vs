@@ -696,6 +696,151 @@ let tuple: (i32, String, bool) = (1, String::from("hello"), true);
 let (a, b, c) = tuple;        // 解构
 ```
 
+### 索引越界处理 (IndexError)
+
+| 语言 | 越界行为 | 安全访问方式 |
+|------|----------|--------------|
+| TypeScript | 返回 `undefined` | `arr.at()` / `arr[i] ?? default` |
+| Python | 抛出 `IndexError` | `try/except` / 切片 |
+| Go | panic | 先检查长度 |
+| Rust | panic | `.get()` 返回 `Option` |
+
+```typescript
+// ==================== TypeScript ====================
+const arr = [1, 2, 3];
+
+// 越界返回 undefined (不报错)
+arr[10];           // undefined
+arr[-1];           // undefined
+
+// 安全访问
+arr.at(-1);        // 3 (支持负索引)
+arr.at(10);        // undefined
+
+// 带默认值
+arr[10] ?? 0;      // 0
+(arr[10] as number) || 0;  // 0
+
+// 检查后访问
+if (index >= 0 && index < arr.length) {
+    console.log(arr[index]);
+}
+
+// 类型安全的访问
+function safeGet<T>(arr: T[], index: number): T | undefined {
+    return arr[index];
+}
+```
+
+```python
+# ==================== Python ====================
+arr = [1, 2, 3]
+
+# 越界抛出 IndexError
+# arr[10]  # IndexError: list index out of range
+
+# try/except 处理
+try:
+    value = arr[10]
+except IndexError:
+    value = None  # 或默认值
+
+# 使用切片 (不会越界，返回空列表)
+arr[10:11]  # [] (空列表)
+arr[10:]    # []
+
+# 负索引
+arr[-1]     # 3 (最后一个)
+arr[-10]    # IndexError
+
+# 安全访问函数
+def safe_get(lst, index, default=None):
+    try:
+        return lst[index]
+    except IndexError:
+        return default
+
+safe_get(arr, 10, 0)  # 0
+
+# 使用条件表达式
+value = arr[i] if 0 <= i < len(arr) else default
+```
+
+```go
+// ==================== Go ====================
+arr := []int{1, 2, 3}
+
+// 越界会 panic
+// _ = arr[10]  // panic: runtime error: index out of range
+
+// 先检查长度
+if index >= 0 && index < len(arr) {
+    value := arr[index]
+    fmt.Println(value)
+}
+
+// 安全访问函数
+func safeGet[T any](slice []T, index int) (T, bool) {
+    if index >= 0 && index < len(slice) {
+        return slice[index], true
+    }
+    var zero T
+    return zero, false
+}
+
+value, ok := safeGet(arr, 10)
+if ok {
+    fmt.Println(value)
+}
+
+// 带默认值
+func getOrDefault[T any](slice []T, index int, defaultVal T) T {
+    if index >= 0 && index < len(slice) {
+        return slice[index]
+    }
+    return defaultVal
+}
+```
+
+```rust
+// ==================== Rust ====================
+let arr = vec![1, 2, 3];
+
+// 越界会 panic
+// let _ = arr[10];  // panic: index out of bounds
+
+// 使用 .get() 返回 Option
+let value: Option<&i32> = arr.get(10);  // None
+let value: Option<&i32> = arr.get(1);   // Some(&2)
+
+// 模式匹配
+match arr.get(10) {
+    Some(v) => println!("Value: {}", v),
+    None => println!("Index out of bounds"),
+}
+
+// if let
+if let Some(v) = arr.get(1) {
+    println!("Value: {}", v);
+}
+
+// 带默认值
+let value = arr.get(10).copied().unwrap_or(0);  // 0
+let value = arr.get(10).unwrap_or(&0);          // &0
+
+// 安全的可变访问
+let mut arr = vec![1, 2, 3];
+if let Some(v) = arr.get_mut(1) {
+    *v = 100;
+}
+
+// first() / last()
+arr.first();  // Some(&1)
+arr.last();   // Some(&3)
+let empty: Vec<i32> = vec![];
+empty.first();  // None
+```
+
 ---
 
 ## 🔪 Slice 切片操作
@@ -1704,6 +1849,240 @@ match user {
 │ Key 不存在      │ undefined      │ KeyError/None  │ 零值/comma-ok  │ Option         │
 └─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
 ```
+
+### Key 不存在处理 (KeyError)
+
+| 语言 | 不存在行为 | 安全访问方式 |
+|------|------------|--------------|
+| TypeScript | 返回 `undefined` | `.get()` / `??` / `in` |
+| Python | `d[k]` 抛 `KeyError` | `.get()` / `in` / `try` |
+| Go | 返回零值 | comma-ok 模式 |
+| Rust | `.get()` 返回 `Option` | 模式匹配 / `unwrap_or` |
+
+```typescript
+// ==================== TypeScript ====================
+// Object
+const obj: Record<string, number> = { a: 1, b: 2 };
+
+obj['c'];           // undefined
+obj.c;              // undefined
+
+// 检查 key 存在
+'a' in obj;         // true
+'c' in obj;         // false
+obj.hasOwnProperty('a');  // true
+
+// 带默认值
+obj['c'] ?? 0;      // 0
+obj['c'] || 0;      // 0 (注意: 0 也会被替换)
+
+// 可选链
+const nested = { user: { name: 'Alice' } };
+nested?.user?.age;  // undefined
+nested?.user?.age ?? 18;  // 18
+
+// Map
+const map = new Map<string, number>();
+map.set('a', 1);
+
+map.get('a');       // 1
+map.get('c');       // undefined
+map.has('a');       // true
+
+// 带默认值
+map.get('c') ?? 0;  // 0
+
+// 获取或设置默认值
+function getOrSet<K, V>(map: Map<K, V>, key: K, defaultValue: V): V {
+    if (!map.has(key)) {
+        map.set(key, defaultValue);
+    }
+    return map.get(key)!;
+}
+```
+
+```python
+# ==================== Python ====================
+d = {'a': 1, 'b': 2}
+
+# d['c']  # KeyError: 'c'
+
+# .get() 方法 (推荐)
+d.get('a')        # 1
+d.get('c')        # None
+d.get('c', 0)     # 0 (带默认值)
+
+# 检查 key 存在
+'a' in d          # True
+'c' in d          # False
+
+# try/except
+try:
+    value = d['c']
+except KeyError:
+    value = 0
+
+# setdefault - 获取或设置默认值
+d.setdefault('c', 0)  # 返回 0, 并设置 d['c'] = 0
+
+# defaultdict - 自动默认值
+from collections import defaultdict
+
+dd = defaultdict(int)      # 默认 0
+dd['new_key'] += 1         # 不会 KeyError
+
+dd = defaultdict(list)     # 默认空列表
+dd['items'].append(1)      # 不会 KeyError
+
+dd = defaultdict(lambda: 'default')
+dd['any']                  # 'default'
+
+# 安全嵌套访问
+def deep_get(d, *keys, default=None):
+    for key in keys:
+        if isinstance(d, dict):
+            d = d.get(key, default)
+        else:
+            return default
+    return d
+
+nested = {'user': {'profile': {'name': 'Alice'}}}
+deep_get(nested, 'user', 'profile', 'name')  # 'Alice'
+deep_get(nested, 'user', 'profile', 'age', default=0)  # 0
+
+# Python 3.10+ 模式匹配
+match d.get('key'):
+    case None:
+        print("Key not found")
+    case value:
+        print(f"Value: {value}")
+```
+
+```go
+// ==================== Go ====================
+m := map[string]int{"a": 1, "b": 2}
+
+// 直接访问 - 不存在返回零值
+m["a"]   // 1
+m["c"]   // 0 (int 的零值)
+
+// comma-ok 模式 (推荐)
+value, ok := m["a"]
+if ok {
+    fmt.Println("Found:", value)
+} else {
+    fmt.Println("Not found")
+}
+
+// 简写
+if value, ok := m["c"]; ok {
+    fmt.Println(value)
+} else {
+    fmt.Println("Key not found")
+}
+
+// 检查 key 存在
+_, exists := m["c"]
+
+// 带默认值
+func getOrDefault[K comparable, V any](m map[K]V, key K, defaultVal V) V {
+    if value, ok := m[key]; ok {
+        return value
+    }
+    return defaultVal
+}
+
+getOrDefault(m, "c", 100)  // 100
+
+// 获取或设置
+func getOrSet[K comparable, V any](m map[K]V, key K, defaultVal V) V {
+    if value, ok := m[key]; ok {
+        return value
+    }
+    m[key] = defaultVal
+    return defaultVal
+}
+
+// sync.Map
+var sm sync.Map
+sm.Store("key", "value")
+
+value, ok := sm.Load("key")
+if ok {
+    fmt.Println(value)
+}
+
+// LoadOrStore - 原子获取或设置
+actual, loaded := sm.LoadOrStore("key", "default")
+```
+
+```rust
+// ==================== Rust ====================
+use std::collections::HashMap;
+
+let mut map = HashMap::new();
+map.insert("a", 1);
+map.insert("b", 2);
+
+// .get() 返回 Option
+let value: Option<&i32> = map.get("a");  // Some(&1)
+let value: Option<&i32> = map.get("c");  // None
+
+// 模式匹配
+match map.get("a") {
+    Some(v) => println!("Found: {}", v),
+    None => println!("Not found"),
+}
+
+// if let
+if let Some(v) = map.get("a") {
+    println!("Value: {}", v);
+}
+
+// 带默认值
+let value = map.get("c").copied().unwrap_or(0);  // 0
+let value = *map.get("c").unwrap_or(&0);         // 0
+
+// 检查 key 存在
+map.contains_key("a");  // true
+
+// entry API (推荐)
+// 获取或插入默认值
+let value = map.entry("c").or_insert(0);
+*value += 1;
+
+// 使用闭包计算默认值
+map.entry("d").or_insert_with(|| expensive_computation());
+
+// 获取或插入默认值 (返回引用)
+let count = map.entry("counter").or_default();  // 插入类型的 Default
+*count += 1;
+
+// 修改已存在的值
+map.entry("a").and_modify(|v| *v += 10);
+
+// 完整模式
+map.entry("key")
+    .and_modify(|v| *v += 1)
+    .or_insert(1);
+
+// 安全的嵌套访问
+let nested: HashMap<&str, HashMap<&str, i32>> = HashMap::new();
+let value = nested.get("outer")
+    .and_then(|inner| inner.get("inner"))
+    .copied()
+    .unwrap_or(0);
+```
+
+### Key 处理最佳实践
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 简单获取 | `obj[k] ?? def` | `d.get(k, def)` | comma-ok | `.unwrap_or(def)` |
+| 检查存在 | `k in obj` | `k in d` | `_, ok := m[k]` | `.contains_key(k)` |
+| 获取或设置 | 手动检查 | `setdefault` | 手动检查 | `.entry().or_insert()` |
+| 自动默认值 | 手动 | `defaultdict` | 手动 | `.entry().or_default()` |
+| 嵌套访问 | 可选链 `?.` | `deep_get` | 多次 comma-ok | `.and_then()` |
 
 ---
 
