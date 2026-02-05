@@ -696,6 +696,722 @@ let tuple: (i32, String, bool) = (1, String::from("hello"), true);
 let (a, b, c) = tuple;        // 解构
 ```
 
+### 索引越界处理 (IndexError)
+
+| 语言 | 越界行为 | 安全访问方式 |
+|------|----------|--------------|
+| TypeScript | 返回 `undefined` | `arr.at()` / `arr[i] ?? default` |
+| Python | 抛出 `IndexError` | `try/except` / 切片 |
+| Go | panic | 先检查长度 |
+| Rust | panic | `.get()` 返回 `Option` |
+
+```typescript
+// ==================== TypeScript ====================
+const arr = [1, 2, 3];
+
+// 越界返回 undefined (不报错)
+arr[10];           // undefined
+arr[-1];           // undefined
+
+// 安全访问
+arr.at(-1);        // 3 (支持负索引)
+arr.at(10);        // undefined
+
+// 带默认值
+arr[10] ?? 0;      // 0
+(arr[10] as number) || 0;  // 0
+
+// 检查后访问
+if (index >= 0 && index < arr.length) {
+    console.log(arr[index]);
+}
+
+// 类型安全的访问
+function safeGet<T>(arr: T[], index: number): T | undefined {
+    return arr[index];
+}
+```
+
+```python
+# ==================== Python ====================
+arr = [1, 2, 3]
+
+# 越界抛出 IndexError
+# arr[10]  # IndexError: list index out of range
+
+# try/except 处理
+try:
+    value = arr[10]
+except IndexError:
+    value = None  # 或默认值
+
+# 使用切片 (不会越界，返回空列表)
+arr[10:11]  # [] (空列表)
+arr[10:]    # []
+
+# 负索引
+arr[-1]     # 3 (最后一个)
+arr[-10]    # IndexError
+
+# 安全访问函数
+def safe_get(lst, index, default=None):
+    try:
+        return lst[index]
+    except IndexError:
+        return default
+
+safe_get(arr, 10, 0)  # 0
+
+# 使用条件表达式
+value = arr[i] if 0 <= i < len(arr) else default
+```
+
+```go
+// ==================== Go ====================
+arr := []int{1, 2, 3}
+
+// 越界会 panic
+// _ = arr[10]  // panic: runtime error: index out of range
+
+// 先检查长度
+if index >= 0 && index < len(arr) {
+    value := arr[index]
+    fmt.Println(value)
+}
+
+// 安全访问函数
+func safeGet[T any](slice []T, index int) (T, bool) {
+    if index >= 0 && index < len(slice) {
+        return slice[index], true
+    }
+    var zero T
+    return zero, false
+}
+
+value, ok := safeGet(arr, 10)
+if ok {
+    fmt.Println(value)
+}
+
+// 带默认值
+func getOrDefault[T any](slice []T, index int, defaultVal T) T {
+    if index >= 0 && index < len(slice) {
+        return slice[index]
+    }
+    return defaultVal
+}
+```
+
+```rust
+// ==================== Rust ====================
+let arr = vec![1, 2, 3];
+
+// 越界会 panic
+// let _ = arr[10];  // panic: index out of bounds
+
+// 使用 .get() 返回 Option
+let value: Option<&i32> = arr.get(10);  // None
+let value: Option<&i32> = arr.get(1);   // Some(&2)
+
+// 模式匹配
+match arr.get(10) {
+    Some(v) => println!("Value: {}", v),
+    None => println!("Index out of bounds"),
+}
+
+// if let
+if let Some(v) = arr.get(1) {
+    println!("Value: {}", v);
+}
+
+// 带默认值
+let value = arr.get(10).copied().unwrap_or(0);  // 0
+let value = arr.get(10).unwrap_or(&0);          // &0
+
+// 安全的可变访问
+let mut arr = vec![1, 2, 3];
+if let Some(v) = arr.get_mut(1) {
+    *v = 100;
+}
+
+// first() / last()
+arr.first();  // Some(&1)
+arr.last();   // Some(&3)
+let empty: Vec<i32> = vec![];
+empty.first();  // None
+```
+
+---
+
+## 🔪 Slice 切片操作
+
+### 切片概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 语法 | `arr.slice(start, end)` | `list[start:end]` | `slice[start:end]` | `&slice[start..end]` |
+| 负索引 | ❌ (需 at()) | ✅ | ❌ | ❌ |
+| 步长 | ❌ | ✅ `[::step]` | ❌ | ❌ (需迭代器) |
+| 原地修改 | `splice()` | `list[a:b] = x` | 赋值 | `copy_from_slice` |
+| 返回类型 | 新数组 | 新列表 | 切片(引用) | 切片(引用) |
+
+### TypeScript 切片操作
+
+```typescript
+// ==================== slice() 基本语法 ====================
+const arr = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+// slice(start, end) - 不包含 end
+arr.slice(2, 5);     // [2, 3, 4]
+arr.slice(3);        // [3, 4, 5, 6, 7, 8, 9] - 从索引3到末尾
+arr.slice();         // [0, 1, ..., 9] - 浅拷贝整个数组
+arr.slice(0, -1);    // [0, 1, ..., 8] - 负数从末尾计算
+arr.slice(-3);       // [7, 8, 9] - 最后3个元素
+arr.slice(-5, -2);   // [5, 6, 7] - 倒数第5到倒数第2(不含)
+
+// ==================== 字符串切片 ====================
+const str = "Hello, World!";
+str.slice(0, 5);     // "Hello"
+str.slice(7);        // "World!"
+str.slice(-6, -1);   // "World"
+
+// substring vs slice
+str.substring(0, 5); // "Hello" - 负数视为0，参数可交换
+str.slice(0, 5);     // "Hello" - 支持负数，参数不交换
+
+// ==================== splice() 原地修改 ====================
+const nums = [1, 2, 3, 4, 5];
+
+// splice(start, deleteCount, ...items)
+nums.splice(2, 1);           // 删除索引2的元素，返回 [3]，nums = [1, 2, 4, 5]
+nums.splice(1, 0, 10, 11);   // 在索引1插入，nums = [1, 10, 11, 2, 4, 5]
+nums.splice(2, 2, 20);       // 替换，nums = [1, 10, 20, 4, 5]
+
+// ==================== 访问单个元素 ====================
+const items = ['a', 'b', 'c', 'd', 'e'];
+
+items[0];            // 'a'
+items[items.length - 1];  // 'e' - 最后一个
+items.at(0);         // 'a' - ES2022
+items.at(-1);        // 'e' - 支持负索引
+items.at(-2);        // 'd'
+
+// ==================== 分块切片 ====================
+function chunk<T>(arr: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+        result.push(arr.slice(i, i + size));
+    }
+    return result;
+}
+
+chunk([1, 2, 3, 4, 5], 2);  // [[1, 2], [3, 4], [5]]
+
+// ==================== 滑动窗口 ====================
+function* slidingWindow<T>(arr: T[], size: number): Generator<T[]> {
+    for (let i = 0; i <= arr.length - size; i++) {
+        yield arr.slice(i, i + size);
+    }
+}
+
+[...slidingWindow([1, 2, 3, 4, 5], 3)];  // [[1,2,3], [2,3,4], [3,4,5]]
+
+// ==================== 头尾操作 ====================
+const data = [1, 2, 3, 4, 5];
+
+// 获取头部/尾部
+const [first, ...rest] = data;     // first=1, rest=[2,3,4,5]
+const [head, second] = data;       // head=1, second=2
+const last = data.at(-1);          // 5
+
+// 去除头部/尾部
+data.slice(1);       // [2, 3, 4, 5] - 去除第一个
+data.slice(0, -1);   // [1, 2, 3, 4] - 去除最后一个
+data.slice(1, -1);   // [2, 3, 4] - 去除首尾
+
+// ==================== TypedArray 切片 ====================
+const buffer = new ArrayBuffer(16);
+const int32View = new Int32Array(buffer);
+int32View.set([1, 2, 3, 4]);
+
+// subarray 返回视图(共享内存)
+const sub = int32View.subarray(1, 3);  // Int32Array [2, 3]
+sub[0] = 100;  // 修改会影响原数组
+
+// slice 返回拷贝
+const copy = int32View.slice(1, 3);    // Int32Array [2, 3]
+copy[0] = 100;  // 不影响原数组
+```
+
+### Python 切片操作
+
+```python
+# ==================== 基本切片语法 ====================
+lst = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# list[start:stop:step]
+lst[2:5]        # [2, 3, 4] - 不包含 stop
+lst[3:]         # [3, 4, 5, 6, 7, 8, 9] - 从索引3到末尾
+lst[:5]         # [0, 1, 2, 3, 4] - 从开头到索引5(不含)
+lst[:]          # [0, 1, ..., 9] - 浅拷贝
+lst[::2]        # [0, 2, 4, 6, 8] - 步长为2
+lst[1::2]       # [1, 3, 5, 7, 9] - 从索引1开始，步长为2
+
+# ==================== 负索引 ====================
+lst[-1]         # 9 - 最后一个
+lst[-3:]        # [7, 8, 9] - 最后3个
+lst[:-3]        # [0, 1, 2, 3, 4, 5, 6] - 除了最后3个
+lst[-5:-2]      # [5, 6, 7] - 倒数第5到倒数第2(不含)
+lst[::-1]       # [9, 8, ..., 0] - 反转列表
+lst[::-2]       # [9, 7, 5, 3, 1] - 反向步长2
+
+# ==================== 切片对象 ====================
+s = slice(2, 7, 2)
+lst[s]          # [2, 4, 6] - 等同于 lst[2:7:2]
+
+# 获取切片的实际索引
+s.indices(len(lst))  # (2, 7, 2) - (start, stop, step)
+
+# ==================== 字符串切片 ====================
+text = "Hello, World!"
+text[0:5]       # "Hello"
+text[7:]        # "World!"
+text[::-1]      # "!dlroW ,olleH" - 反转
+text[::2]       # "Hlo ol!"
+
+# ==================== 切片赋值 (原地修改) ====================
+nums = [1, 2, 3, 4, 5]
+
+# 替换切片
+nums[1:4] = [20, 30]    # [1, 20, 30, 5] - 可以不等长
+nums[1:1] = [10, 11]    # [1, 10, 11, 20, 30, 5] - 插入
+
+# 删除切片
+nums[2:4] = []          # [1, 10, 30, 5]
+del nums[1:3]           # [1, 5]
+
+# 步长切片赋值 (必须等长)
+lst = [0, 1, 2, 3, 4, 5]
+lst[::2] = [10, 20, 30]  # [10, 1, 20, 3, 30, 5]
+
+# ==================== 元组切片 ====================
+t = (0, 1, 2, 3, 4)
+t[1:4]          # (1, 2, 3) - 返回新元组
+t[::-1]         # (4, 3, 2, 1, 0)
+# t[1:3] = (10, 20)  # 错误! 元组不可变
+
+# ==================== numpy 数组切片 ====================
+import numpy as np
+
+arr = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+
+arr[0]          # array([1, 2, 3]) - 第一行
+arr[:, 0]       # array([1, 4, 7]) - 第一列
+arr[0:2, 1:3]   # array([[2, 3], [5, 6]]) - 子矩阵
+arr[::2, ::2]   # array([[1, 3], [7, 9]]) - 间隔取值
+
+# numpy 切片是视图
+view = arr[0:2, 0:2]
+view[0, 0] = 100  # 修改会影响原数组
+
+# 拷贝
+copy = arr[0:2, 0:2].copy()
+
+# ==================== 高级切片技巧 ====================
+# 分块
+def chunk(lst, size):
+    return [lst[i:i+size] for i in range(0, len(lst), size)]
+
+chunk([1, 2, 3, 4, 5], 2)  # [[1, 2], [3, 4], [5]]
+
+# 滑动窗口
+def sliding_window(lst, size):
+    return [lst[i:i+size] for i in range(len(lst) - size + 1)]
+
+sliding_window([1, 2, 3, 4, 5], 3)  # [[1,2,3], [2,3,4], [3,4,5]]
+
+# 旋转列表
+def rotate(lst, n):
+    n = n % len(lst)
+    return lst[n:] + lst[:n]
+
+rotate([1, 2, 3, 4, 5], 2)  # [3, 4, 5, 1, 2]
+
+# ==================== memoryview 切片 ====================
+data = bytearray(b'Hello World')
+view = memoryview(data)
+
+# 切片共享内存
+sub = view[0:5]
+sub[0] = ord('h')  # data 变为 b'hello World'
+
+# 转换为 bytes
+bytes(view[6:11])  # b'World'
+```
+
+### Go 切片操作
+
+```go
+// ==================== 切片基础 ====================
+// 切片是对底层数组的引用视图
+arr := [10]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+// 从数组创建切片
+slice := arr[2:5]    // [2 3 4] - 不包含索引5
+slice2 := arr[3:]    // [3 4 5 6 7 8 9]
+slice3 := arr[:5]    // [0 1 2 3 4]
+slice4 := arr[:]     // [0 1 2 3 4 5 6 7 8 9]
+
+// 直接创建切片
+nums := []int{1, 2, 3, 4, 5}
+empty := []int{}
+withCap := make([]int, 5, 10)  // len=5, cap=10
+
+// ==================== 切片属性 ====================
+s := []int{1, 2, 3, 4, 5}
+len(s)           // 5 - 长度
+cap(s)           // 5 - 容量 (到底层数组末尾的长度)
+
+// 切片的切片
+sub := s[1:4]    // [2 3 4]
+len(sub)         // 3
+cap(sub)         // 4 - 从索引1到原切片末尾
+
+// ==================== 切片是引用 ====================
+original := []int{1, 2, 3, 4, 5}
+slice := original[1:4]
+slice[0] = 100   // original 变为 [1 100 3 4 5]
+
+// 创建独立副本
+copySlice := make([]int, len(original))
+copy(copySlice, original)
+
+// 或使用 append
+copySlice2 := append([]int{}, original...)
+
+// ==================== append 操作 ====================
+s := []int{1, 2, 3}
+
+// 追加元素
+s = append(s, 4)           // [1 2 3 4]
+s = append(s, 5, 6, 7)     // [1 2 3 4 5 6 7]
+
+// 追加切片
+other := []int{8, 9}
+s = append(s, other...)    // [1 2 3 4 5 6 7 8 9]
+
+// 头部插入
+s = append([]int{0}, s...) // [0 1 2 3 ...]
+
+// 中间插入
+idx := 3
+s = append(s[:idx], append([]int{100}, s[idx:]...)...)
+
+// ==================== 删除元素 ====================
+s := []int{1, 2, 3, 4, 5}
+
+// 删除索引 i
+i := 2
+s = append(s[:i], s[i+1:]...)  // [1 2 4 5]
+
+// 删除范围 [i, j)
+s = append(s[:i], s[j:]...)
+
+// 保持顺序删除最后一个
+s = s[:len(s)-1]
+
+// 不保持顺序删除 (O(1))
+s[i] = s[len(s)-1]
+s = s[:len(s)-1]
+
+// ==================== 切片技巧 ====================
+// 完整切片表达式 slice[low:high:max]
+arr := [5]int{1, 2, 3, 4, 5}
+s := arr[1:3:4]   // [2 3], cap=3 (4-1)
+
+// 限制容量防止意外修改
+original := []int{1, 2, 3, 4, 5}
+limited := original[1:3:3]  // cap=2，append 会创建新数组
+
+// ==================== 二维切片 ====================
+// 创建 3x4 矩阵
+matrix := make([][]int, 3)
+for i := range matrix {
+    matrix[i] = make([]int, 4)
+}
+
+// 初始化
+matrix := [][]int{
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9},
+}
+
+// 访问
+matrix[0]        // [1 2 3]
+matrix[0][1]     // 2
+
+// 行切片
+row := matrix[1][:]   // [4 5 6]
+
+// 列切片 (需要循环)
+col := make([]int, len(matrix))
+for i := range matrix {
+    col[i] = matrix[i][1]
+}
+
+// ==================== 字符串切片 ====================
+s := "Hello, 世界"
+
+// 字节切片
+s[0:5]           // "Hello"
+s[7:]            // "世界"
+
+// 注意: 中文字符占3个字节
+s[7:10]          // "世" - 正确
+// s[7:8]        // 乱码 - 错误
+
+// 安全的字符切片
+runes := []rune(s)
+string(runes[7:9])  // "世界"
+
+// ==================== 分块与滑动窗口 ====================
+func chunk[T any](slice []T, size int) [][]T {
+    var result [][]T
+    for i := 0; i < len(slice); i += size {
+        end := i + size
+        if end > len(slice) {
+            end = len(slice)
+        }
+        result = append(result, slice[i:end])
+    }
+    return result
+}
+
+func slidingWindow[T any](slice []T, size int) [][]T {
+    if len(slice) < size {
+        return nil
+    }
+    result := make([][]T, 0, len(slice)-size+1)
+    for i := 0; i <= len(slice)-size; i++ {
+        result = append(result, slice[i:i+size])
+    }
+    return result
+}
+
+// ==================== 预分配优化 ====================
+// 已知大小时预分配
+result := make([]int, 0, expectedSize)
+for _, v := range data {
+    result = append(result, process(v))
+}
+
+// 清空但保留容量
+s = s[:0]
+```
+
+### Rust 切片操作
+
+```rust
+// ==================== 切片基础 ====================
+// 切片是对连续序列的引用视图
+let arr = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+// 创建切片 (引用)
+let slice: &[i32] = &arr[2..5];    // [2, 3, 4]
+let slice2 = &arr[3..];           // [3, 4, 5, 6, 7, 8, 9]
+let slice3 = &arr[..5];           // [0, 1, 2, 3, 4]
+let slice4 = &arr[..];            // 全部
+
+// 包含结束索引
+let inclusive = &arr[2..=5];      // [2, 3, 4, 5]
+
+// Vec 切片
+let vec = vec![1, 2, 3, 4, 5];
+let vec_slice = &vec[1..4];       // [2, 3, 4]
+
+// ==================== 可变切片 ====================
+let mut arr = [1, 2, 3, 4, 5];
+let slice = &mut arr[1..4];
+slice[0] = 100;                   // arr 变为 [1, 100, 3, 4, 5]
+
+// ==================== 切片方法 ====================
+let s = &[1, 2, 3, 4, 5][..];
+
+// 长度
+s.len();                          // 5
+s.is_empty();                     // false
+
+// 访问元素
+s[0];                             // 1 - 可能 panic
+s.get(0);                         // Some(&1)
+s.get(10);                        // None
+s.first();                        // Some(&1)
+s.last();                         // Some(&5)
+
+// 安全访问
+if let Some(val) = s.get(2) {
+    println!("{}", val);
+}
+
+// ==================== 分割切片 ====================
+let s = &[1, 2, 3, 4, 5][..];
+
+// split_at
+let (left, right) = s.split_at(2);  // [1, 2], [3, 4, 5]
+
+// split_first / split_last
+let (first, rest) = s.split_first().unwrap();  // 1, [2, 3, 4, 5]
+let (last, init) = s.split_last().unwrap();    // 5, [1, 2, 3, 4]
+
+// split 按条件
+let parts: Vec<_> = s.split(|&x| x == 3).collect();
+// [[1, 2], [4, 5]]
+
+// splitn 限制数量
+let parts: Vec<_> = s.splitn(2, |&x| x == 3).collect();
+
+// ==================== 窗口与分块 ====================
+let s = &[1, 2, 3, 4, 5][..];
+
+// windows - 滑动窗口
+for window in s.windows(3) {
+    println!("{:?}", window);     // [1,2,3], [2,3,4], [3,4,5]
+}
+
+// chunks - 分块
+for chunk in s.chunks(2) {
+    println!("{:?}", chunk);      // [1,2], [3,4], [5]
+}
+
+// chunks_exact - 精确分块 (忽略不足)
+for chunk in s.chunks_exact(2) {
+    println!("{:?}", chunk);      // [1,2], [3,4]
+}
+let remainder = s.chunks_exact(2).remainder();  // [5]
+
+// rchunks - 从右侧分块
+for chunk in s.rchunks(2) {
+    println!("{:?}", chunk);      // [4,5], [2,3], [1]
+}
+
+// ==================== 可变切片操作 ====================
+let mut arr = [5, 2, 8, 1, 9, 3];
+let s = &mut arr[..];
+
+// 排序
+s.sort();                         // [1, 2, 3, 5, 8, 9]
+s.sort_by(|a, b| b.cmp(a));       // 降序
+s.sort_by_key(|x| -x);            // 按key
+
+// 反转
+s.reverse();                      // [9, 8, 5, 3, 2, 1]
+
+// 旋转
+s.rotate_left(2);                 // [5, 3, 2, 1, 9, 8]
+s.rotate_right(2);                // [9, 8, 5, 3, 2, 1]
+
+// 交换
+s.swap(0, 5);                     // 交换索引0和5
+
+// 填充
+s.fill(0);                        // 全部填充为0
+
+// ==================== 拷贝操作 ====================
+let src = [1, 2, 3];
+let mut dst = [0; 5];
+
+// copy_from_slice (长度必须相等)
+dst[..3].copy_from_slice(&src);   // [1, 2, 3, 0, 0]
+
+// clone_from_slice (Clone 类型)
+dst[..3].clone_from_slice(&src);
+
+// 部分拷贝
+let mut vec = vec![1, 2, 3, 4, 5];
+vec.copy_within(1..4, 0);         // [2, 3, 4, 4, 5]
+
+// ==================== 搜索 ====================
+let s = &[1, 2, 3, 4, 5, 3][..];
+
+// 查找
+s.contains(&3);                   // true
+s.starts_with(&[1, 2]);           // true
+s.ends_with(&[5, 3]);             // true
+
+// 位置
+s.iter().position(|&x| x == 3);   // Some(2)
+s.iter().rposition(|&x| x == 3);  // Some(5)
+
+// 二分查找 (已排序)
+let sorted = &[1, 2, 3, 4, 5][..];
+sorted.binary_search(&3);         // Ok(2)
+sorted.binary_search(&6);         // Err(5) - 插入位置
+
+// ==================== 字符串切片 ====================
+let s = "Hello, 世界";
+
+// 字节切片
+let bytes: &[u8] = s.as_bytes();
+
+// 字符串切片 (必须是有效 UTF-8 边界)
+let hello = &s[0..5];             // "Hello"
+// let bad = &s[0..8];            // panic! 无效边界
+
+// 安全切片
+let slice = s.get(0..5);          // Some("Hello")
+let invalid = s.get(0..8);        // None
+
+// 字符迭代
+for (i, c) in s.char_indices() {
+    println!("{}: {}", i, c);
+}
+
+// ==================== 迭代器转切片 ====================
+let vec: Vec<i32> = (1..=5).collect();
+let slice: &[i32] = &vec;
+
+// 切片转 Vec
+let vec2: Vec<i32> = slice.to_vec();
+
+// 数组转切片
+let arr = [1, 2, 3, 4, 5];
+let slice: &[i32] = &arr;
+
+// Box<[T]> - 堆上固定大小
+let boxed: Box<[i32]> = vec![1, 2, 3].into_boxed_slice();
+```
+
+### 切片操作对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 基本切片        │ arr.slice(1, 4)      │ lst[1:4]             │ s[1:4]               │ &s[1..4]             │
+│ 从开头          │ arr.slice(0, n)      │ lst[:n]              │ s[:n]                │ &s[..n]              │
+│ 到末尾          │ arr.slice(n)         │ lst[n:]              │ s[n:]                │ &s[n..]              │
+│ 负索引          │ arr.at(-1)           │ lst[-1]              │ s[len(s)-1]          │ s.last()             │
+│ 步长            │ ❌                   │ lst[::2]             │ ❌                   │ iter().step_by(2)    │
+│ 反转            │ arr.reverse()        │ lst[::-1]            │ slices.Reverse()     │ s.reverse()          │
+│ 复制            │ [...arr]             │ lst[:]               │ copy(dst, src)       │ s.to_vec()           │
+│ 修改是否影响原  │ ❌ (新数组)          │ ❌ (新列表)          │ ✅ (视图)            │ ✅ (引用)            │
+│ 分块            │ 手动实现             │ 手动实现             │ 手动实现             │ chunks()             │
+│ 滑动窗口        │ 手动实现             │ 手动实现             │ 手动实现             │ windows()            │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 常见切片模式
+
+| 模式 | 描述 | 示例 |
+|------|------|------|
+| **浅拷贝** | 创建独立副本 | `[...arr]` / `lst[:]` / `copy()` / `.to_vec()` |
+| **头尾分离** | 获取首/尾元素和剩余 | 解构 / `split_first` |
+| **分块处理** | 固定大小分组 | `chunks()` / 手动循环 |
+| **滑动窗口** | 连续子序列 | `windows()` / 手动循环 |
+| **限制容量** | 防止意外扩展 | Go `s[a:b:c]` |
+| **安全访问** | 避免越界 | `.get()` / `try` |
+
 ---
 
 ## 🗺️ Map / Struct / Interface
@@ -1132,6 +1848,1563 @@ match user {
 │ Map 删除        │ delete()       │ del/pop()      │ delete()       │ remove()       │
 │ Key 不存在      │ undefined      │ KeyError/None  │ 零值/comma-ok  │ Option         │
 └─────────────────┴────────────────┴────────────────┴────────────────┴────────────────┘
+```
+
+### Key 不存在处理 (KeyError)
+
+| 语言 | 不存在行为 | 安全访问方式 |
+|------|------------|--------------|
+| TypeScript | 返回 `undefined` | `.get()` / `??` / `in` |
+| Python | `d[k]` 抛 `KeyError` | `.get()` / `in` / `try` |
+| Go | 返回零值 | comma-ok 模式 |
+| Rust | `.get()` 返回 `Option` | 模式匹配 / `unwrap_or` |
+
+```typescript
+// ==================== TypeScript ====================
+// Object
+const obj: Record<string, number> = { a: 1, b: 2 };
+
+obj['c'];           // undefined
+obj.c;              // undefined
+
+// 检查 key 存在
+'a' in obj;         // true
+'c' in obj;         // false
+obj.hasOwnProperty('a');  // true
+
+// 带默认值
+obj['c'] ?? 0;      // 0
+obj['c'] || 0;      // 0 (注意: 0 也会被替换)
+
+// 可选链
+const nested = { user: { name: 'Alice' } };
+nested?.user?.age;  // undefined
+nested?.user?.age ?? 18;  // 18
+
+// Map
+const map = new Map<string, number>();
+map.set('a', 1);
+
+map.get('a');       // 1
+map.get('c');       // undefined
+map.has('a');       // true
+
+// 带默认值
+map.get('c') ?? 0;  // 0
+
+// 获取或设置默认值
+function getOrSet<K, V>(map: Map<K, V>, key: K, defaultValue: V): V {
+    if (!map.has(key)) {
+        map.set(key, defaultValue);
+    }
+    return map.get(key)!;
+}
+```
+
+```python
+# ==================== Python ====================
+d = {'a': 1, 'b': 2}
+
+# d['c']  # KeyError: 'c'
+
+# .get() 方法 (推荐)
+d.get('a')        # 1
+d.get('c')        # None
+d.get('c', 0)     # 0 (带默认值)
+
+# 检查 key 存在
+'a' in d          # True
+'c' in d          # False
+
+# try/except
+try:
+    value = d['c']
+except KeyError:
+    value = 0
+
+# setdefault - 获取或设置默认值
+d.setdefault('c', 0)  # 返回 0, 并设置 d['c'] = 0
+
+# defaultdict - 自动默认值
+from collections import defaultdict
+
+dd = defaultdict(int)      # 默认 0
+dd['new_key'] += 1         # 不会 KeyError
+
+dd = defaultdict(list)     # 默认空列表
+dd['items'].append(1)      # 不会 KeyError
+
+dd = defaultdict(lambda: 'default')
+dd['any']                  # 'default'
+
+# 安全嵌套访问
+def deep_get(d, *keys, default=None):
+    for key in keys:
+        if isinstance(d, dict):
+            d = d.get(key, default)
+        else:
+            return default
+    return d
+
+nested = {'user': {'profile': {'name': 'Alice'}}}
+deep_get(nested, 'user', 'profile', 'name')  # 'Alice'
+deep_get(nested, 'user', 'profile', 'age', default=0)  # 0
+
+# Python 3.10+ 模式匹配
+match d.get('key'):
+    case None:
+        print("Key not found")
+    case value:
+        print(f"Value: {value}")
+```
+
+```go
+// ==================== Go ====================
+m := map[string]int{"a": 1, "b": 2}
+
+// 直接访问 - 不存在返回零值
+m["a"]   // 1
+m["c"]   // 0 (int 的零值)
+
+// comma-ok 模式 (推荐)
+value, ok := m["a"]
+if ok {
+    fmt.Println("Found:", value)
+} else {
+    fmt.Println("Not found")
+}
+
+// 简写
+if value, ok := m["c"]; ok {
+    fmt.Println(value)
+} else {
+    fmt.Println("Key not found")
+}
+
+// 检查 key 存在
+_, exists := m["c"]
+
+// 带默认值
+func getOrDefault[K comparable, V any](m map[K]V, key K, defaultVal V) V {
+    if value, ok := m[key]; ok {
+        return value
+    }
+    return defaultVal
+}
+
+getOrDefault(m, "c", 100)  // 100
+
+// 获取或设置
+func getOrSet[K comparable, V any](m map[K]V, key K, defaultVal V) V {
+    if value, ok := m[key]; ok {
+        return value
+    }
+    m[key] = defaultVal
+    return defaultVal
+}
+
+// sync.Map
+var sm sync.Map
+sm.Store("key", "value")
+
+value, ok := sm.Load("key")
+if ok {
+    fmt.Println(value)
+}
+
+// LoadOrStore - 原子获取或设置
+actual, loaded := sm.LoadOrStore("key", "default")
+```
+
+```rust
+// ==================== Rust ====================
+use std::collections::HashMap;
+
+let mut map = HashMap::new();
+map.insert("a", 1);
+map.insert("b", 2);
+
+// .get() 返回 Option
+let value: Option<&i32> = map.get("a");  // Some(&1)
+let value: Option<&i32> = map.get("c");  // None
+
+// 模式匹配
+match map.get("a") {
+    Some(v) => println!("Found: {}", v),
+    None => println!("Not found"),
+}
+
+// if let
+if let Some(v) = map.get("a") {
+    println!("Value: {}", v);
+}
+
+// 带默认值
+let value = map.get("c").copied().unwrap_or(0);  // 0
+let value = *map.get("c").unwrap_or(&0);         // 0
+
+// 检查 key 存在
+map.contains_key("a");  // true
+
+// entry API (推荐)
+// 获取或插入默认值
+let value = map.entry("c").or_insert(0);
+*value += 1;
+
+// 使用闭包计算默认值
+map.entry("d").or_insert_with(|| expensive_computation());
+
+// 获取或插入默认值 (返回引用)
+let count = map.entry("counter").or_default();  // 插入类型的 Default
+*count += 1;
+
+// 修改已存在的值
+map.entry("a").and_modify(|v| *v += 10);
+
+// 完整模式
+map.entry("key")
+    .and_modify(|v| *v += 1)
+    .or_insert(1);
+
+// 安全的嵌套访问
+let nested: HashMap<&str, HashMap<&str, i32>> = HashMap::new();
+let value = nested.get("outer")
+    .and_then(|inner| inner.get("inner"))
+    .copied()
+    .unwrap_or(0);
+```
+
+### Key 处理最佳实践
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 简单获取 | `obj[k] ?? def` | `d.get(k, def)` | comma-ok | `.unwrap_or(def)` |
+| 检查存在 | `k in obj` | `k in d` | `_, ok := m[k]` | `.contains_key(k)` |
+| 获取或设置 | 手动检查 | `setdefault` | 手动检查 | `.entry().or_insert()` |
+| 自动默认值 | 手动 | `defaultdict` | 手动 | `.entry().or_default()` |
+| 嵌套访问 | 可选链 `?.` | `deep_get` | 多次 comma-ok | `.and_then()` |
+
+---
+
+## 🔗 指针与引用
+
+### 指针/引用概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 指针类型 | ❌ | ❌ | `*T` | `*const T` / `*mut T` |
+| 引用类型 | 对象自动引用 | 对象自动引用 | `&T` (取地址) | `&T` / `&mut T` |
+| 空指针 | `null`/`undefined` | `None` | `nil` | `Option<&T>` |
+| 解引用 | 自动 | 自动 | `*ptr` | `*ptr` |
+| 智能指针 | ❌ | ❌ | ❌ | `Box`/`Rc`/`Arc` |
+| 裸指针 | ❌ | `ctypes` | `unsafe.Pointer` | `*const T`/`*mut T` |
+
+### 指针与引用图解
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         指针与引用的区别                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  引用 (Reference)                    指针 (Pointer)                         │
+│  ┌─────────┐                        ┌─────────┐                             │
+│  │ 变量 x  │                        │ 变量 x  │                             │
+│  │  42     │                        │  42     │                             │
+│  └────▲────┘                        └────▲────┘                             │
+│       │                                  │                                  │
+│       │ 别名                             │ 地址: 0x1234                      │
+│       │                                  │                                  │
+│  ┌────┴────┐                        ┌────┴────┐                             │
+│  │ 引用 r  │                        │ 指针 p  │                             │
+│  │  &x     │                        │ 0x1234  │ ← 存储的是地址              │
+│  └─────────┘                        └─────────┘                             │
+│  • 必须有效                          • 可以为 null/nil                       │
+│  • 自动解引用                        • 需要显式解引用 *p                     │
+│  • 编译器保证安全                    • 可能悬垂(dangling)                   │
+│                                                                             │
+│  智能指针 (Rust)                                                            │
+│  ┌─────────────────────────────────────────────────┐                       │
+│  │ Box<T>     - 堆上分配，独占所有权               │                       │
+│  │ Rc<T>      - 引用计数，单线程共享               │                       │
+│  │ Arc<T>     - 原子引用计数，多线程共享           │                       │
+│  │ RefCell<T> - 运行时借用检查                     │                       │
+│  └─────────────────────────────────────────────────┘                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### TypeScript 引用
+
+```typescript
+// ==================== 对象引用 ====================
+// TypeScript 中对象、数组、函数都是引用类型
+const obj1 = { value: 42 };
+const obj2 = obj1;  // obj2 引用同一个对象
+
+obj2.value = 100;
+console.log(obj1.value);  // 100 - 同一对象
+
+// 检查是否同一引用
+console.log(obj1 === obj2);  // true
+
+// ==================== 基本类型是值 ====================
+let a = 42;
+let b = a;  // 复制值
+b = 100;
+console.log(a);  // 42 - 不受影响
+
+// ==================== 创建新引用 (浅拷贝) ====================
+const original = { a: 1, nested: { b: 2 } };
+
+// 浅拷贝方法
+const copy1 = { ...original };
+const copy2 = Object.assign({}, original);
+
+copy1.a = 100;
+console.log(original.a);  // 1 - 不受影响
+
+copy1.nested.b = 200;
+console.log(original.nested.b);  // 200 - 嵌套对象仍共享！
+
+// ==================== 深拷贝 ====================
+const deep1 = JSON.parse(JSON.stringify(original));
+const deep2 = structuredClone(original);  // 现代浏览器
+
+// ==================== WeakRef 弱引用 ====================
+let target = { data: "important" };
+const weakRef = new WeakRef(target);
+
+// 获取引用（可能已被 GC）
+const deref = weakRef.deref();
+if (deref) {
+    console.log(deref.data);
+}
+
+// ==================== 引用相等 vs 值相等 ====================
+const arr1 = [1, 2, 3];
+const arr2 = [1, 2, 3];
+const arr3 = arr1;
+
+arr1 === arr2;  // false - 不同对象
+arr1 === arr3;  // true - 同一引用
+
+// 值比较
+JSON.stringify(arr1) === JSON.stringify(arr2);  // true
+
+// ==================== 冻结对象防止修改 ====================
+const frozen = Object.freeze({ value: 42 });
+// frozen.value = 100;  // 严格模式下报错
+
+// 深冻结
+function deepFreeze<T extends object>(obj: T): Readonly<T> {
+    Object.keys(obj).forEach(key => {
+        const value = (obj as any)[key];
+        if (typeof value === 'object' && value !== null) {
+            deepFreeze(value);
+        }
+    });
+    return Object.freeze(obj);
+}
+```
+
+### Python 引用
+
+```python
+# ==================== 对象引用 ====================
+# Python 中一切皆对象，变量是对象的引用/标签
+list1 = [1, 2, 3]
+list2 = list1  # 指向同一个列表
+
+list2.append(4)
+print(list1)  # [1, 2, 3, 4] - 同一对象
+
+# 检查是否同一对象
+print(list1 is list2)  # True
+print(id(list1) == id(list2))  # True
+
+# ==================== 不可变对象 ====================
+# int, str, tuple 是不可变的
+a = 42
+b = a
+b = 100  # 创建新对象
+print(a)  # 42 - 不受影响
+
+# 小整数缓存 (-5 到 256)
+x = 100
+y = 100
+print(x is y)  # True - 缓存的同一对象
+
+# 字符串驻留
+s1 = "hello"
+s2 = "hello"
+print(s1 is s2)  # True - 驻留的同一对象
+
+# ==================== 浅拷贝 ====================
+import copy
+
+original = [1, 2, [3, 4]]
+
+# 浅拷贝方法
+copy1 = original.copy()
+copy2 = list(original)
+copy3 = original[:]
+copy4 = copy.copy(original)
+
+copy1[0] = 100
+print(original[0])  # 1 - 不受影响
+
+copy1[2][0] = 300
+print(original[2][0])  # 300 - 嵌套对象共享！
+
+# ==================== 深拷贝 ====================
+deep = copy.deepcopy(original)
+deep[2][0] = 999
+print(original[2][0])  # 300 - 完全独立
+
+# ==================== 弱引用 ====================
+import weakref
+
+class MyClass:
+    pass
+
+obj = MyClass()
+weak = weakref.ref(obj)
+
+print(weak())  # <MyClass object>
+del obj
+print(weak())  # None - 对象已被回收
+
+# WeakValueDictionary
+cache = weakref.WeakValueDictionary()
+obj = MyClass()
+cache['key'] = obj
+
+# ==================== 引用计数 ====================
+import sys
+
+a = [1, 2, 3]
+print(sys.getrefcount(a))  # 2 (a + getrefcount 参数)
+
+b = a
+print(sys.getrefcount(a))  # 3
+
+del b
+print(sys.getrefcount(a))  # 2
+
+# ==================== 可变参数陷阱 ====================
+# 错误！默认列表在所有调用间共享
+def bad(items=[]):
+    items.append(1)
+    return items
+
+print(bad())  # [1]
+print(bad())  # [1, 1] - 不是 [1]！
+
+# 正确做法
+def good(items=None):
+    if items is None:
+        items = []
+    items.append(1)
+    return items
+
+# ==================== __slots__ 优化内存 ====================
+class WithSlots:
+    __slots__ = ['x', 'y']  # 不使用 __dict__
+    
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+# 比普通类省内存，但不能动态添加属性
+```
+
+### Go 指针
+
+```go
+// ==================== 指针基础 ====================
+var x int = 42
+var p *int = &x  // p 是指向 x 的指针
+
+fmt.Println(p)   // 0xc0000b4008 (地址)
+fmt.Println(*p)  // 42 (解引用)
+
+*p = 100         // 通过指针修改值
+fmt.Println(x)   // 100
+
+// ==================== 零值是 nil ====================
+var ptr *int     // nil
+if ptr == nil {
+    fmt.Println("ptr is nil")
+}
+
+// 解引用 nil 会 panic
+// fmt.Println(*ptr)  // panic!
+
+// ==================== new 和 & ====================
+// new 返回指针，值为零值
+p1 := new(int)    // *int, 值为 0
+*p1 = 42
+
+// & 取地址
+val := 42
+p2 := &val
+
+// 字面量取地址
+p3 := &struct{ x int }{x: 42}
+
+// ==================== 指针作为参数 ====================
+func double(x *int) {
+    *x *= 2
+}
+
+num := 10
+double(&num)
+fmt.Println(num)  // 20
+
+// ==================== 结构体指针 ====================
+type User struct {
+    Name string
+    Age  int
+}
+
+// 自动解引用
+func (u *User) Birthday() {
+    u.Age++  // 等同于 (*u).Age++
+}
+
+user := &User{Name: "Alice", Age: 30}
+user.Birthday()
+fmt.Println(user.Age)  // 31
+
+// ==================== 指针数组 vs 数组指针 ====================
+// 指针数组: 元素是指针
+var ptrArr [3]*int
+
+// 数组指针: 指向数组的指针
+arr := [3]int{1, 2, 3}
+var arrPtr *[3]int = &arr
+arrPtr[0] = 100  // 自动解引用
+
+// ==================== 不能获取的地址 ====================
+// 常量没有地址
+// const c = 42
+// p := &c  // 编译错误
+
+// map 的值没有地址
+m := map[string]int{"a": 1}
+// p := &m["a"]  // 编译错误
+
+// ==================== unsafe.Pointer ====================
+import "unsafe"
+
+// 任意指针类型转换
+var i int64 = 42
+ptr := unsafe.Pointer(&i)
+floatPtr := (*float64)(ptr)
+
+// 指针运算
+arr := [3]int{10, 20, 30}
+p := unsafe.Pointer(&arr[0])
+p = unsafe.Pointer(uintptr(p) + unsafe.Sizeof(arr[0]))
+fmt.Println(*(*int)(p))  // 20
+
+// ==================== 返回局部变量指针 (安全) ====================
+func createUser() *User {
+    u := User{Name: "Bob"}  // 逃逸到堆
+    return &u  // 安全！Go 会处理
+}
+
+// ==================== 指针接收者 vs 值接收者 ====================
+type Counter struct {
+    count int
+}
+
+// 值接收者 - 复制
+func (c Counter) ValueMethod() {
+    c.count++  // 修改副本
+}
+
+// 指针接收者 - 原值
+func (c *Counter) PointerMethod() {
+    c.count++  // 修改原值
+}
+
+c := Counter{count: 0}
+c.ValueMethod()
+fmt.Println(c.count)  // 0
+
+c.PointerMethod()
+fmt.Println(c.count)  // 1
+
+// ==================== 何时使用指针 ====================
+/*
+使用指针:
+1. 需要修改参数值
+2. 大结构体避免复制
+3. 方法需要修改接收者
+4. 表示可选值 (nil)
+
+使用值:
+1. 小数据类型 (int, bool)
+2. 不需要修改
+3. 需要复制语义
+4. 并发安全的不可变数据
+*/
+```
+
+### Rust 引用与指针
+
+```rust
+// ==================== 引用 (安全) ====================
+// 不可变引用 &T
+let x = 42;
+let r: &i32 = &x;
+println!("{}", *r);  // 42
+
+// 可变引用 &mut T
+let mut y = 42;
+let r_mut: &mut i32 = &mut y;
+*r_mut = 100;
+println!("{}", y);  // 100
+
+// ==================== 借用规则 ====================
+let mut s = String::from("hello");
+
+// 规则1: 多个不可变引用 OK
+let r1 = &s;
+let r2 = &s;
+println!("{} {}", r1, r2);
+
+// 规则2: 一个可变引用，无其他引用
+let r3 = &mut s;
+// let r4 = &s;      // 编译错误！
+// let r5 = &mut s;  // 编译错误！
+r3.push_str(" world");
+
+// ==================== 悬垂引用 (编译器阻止) ====================
+// fn dangling() -> &String {
+//     let s = String::from("hello");
+//     &s  // 编译错误！s 将被释放
+// }
+
+// 正确: 返回所有权
+fn not_dangling() -> String {
+    let s = String::from("hello");
+    s
+}
+
+// ==================== 裸指针 (unsafe) ====================
+let x = 42;
+
+// 创建裸指针 (安全)
+let r1 = &x as *const i32;  // 不可变裸指针
+let mut y = 42;
+let r2 = &mut y as *mut i32;  // 可变裸指针
+
+// 解引用裸指针 (unsafe)
+unsafe {
+    println!("{}", *r1);  // 42
+    *r2 = 100;
+    println!("{}", *r2);  // 100
+}
+
+// 空指针
+let null_ptr: *const i32 = std::ptr::null();
+let null_mut: *mut i32 = std::ptr::null_mut();
+
+// ==================== Box<T> - 堆分配 ====================
+// 独占所有权的堆分配
+let boxed: Box<i32> = Box::new(42);
+println!("{}", *boxed);
+
+// 用于递归类型
+enum List {
+    Cons(i32, Box<List>),
+    Nil,
+}
+
+let list = List::Cons(1, Box::new(List::Cons(2, Box::new(List::Nil))));
+
+// ==================== Rc<T> - 引用计数 ====================
+use std::rc::Rc;
+
+let a = Rc::new(5);
+let b = Rc::clone(&a);  // 增加引用计数
+let c = Rc::clone(&a);
+
+println!("count: {}", Rc::strong_count(&a));  // 3
+
+// ==================== Arc<T> - 原子引用计数 (线程安全) ====================
+use std::sync::Arc;
+use std::thread;
+
+let data = Arc::new(vec![1, 2, 3]);
+
+let handles: Vec<_> = (0..3).map(|_| {
+    let data = Arc::clone(&data);
+    thread::spawn(move || {
+        println!("{:?}", data);
+    })
+}).collect();
+
+for handle in handles {
+    handle.join().unwrap();
+}
+
+// ==================== RefCell<T> - 内部可变性 ====================
+use std::cell::RefCell;
+
+let cell = RefCell::new(5);
+
+// 运行时借用检查
+*cell.borrow_mut() += 1;
+println!("{}", *cell.borrow());  // 6
+
+// 多次借用会 panic
+// let r1 = cell.borrow_mut();
+// let r2 = cell.borrow_mut();  // panic!
+
+// ==================== Cell<T> - 简单内部可变性 ====================
+use std::cell::Cell;
+
+let cell = Cell::new(5);
+cell.set(10);
+println!("{}", cell.get());  // 10
+
+// ==================== Rc<RefCell<T>> 组合 ====================
+use std::rc::Rc;
+use std::cell::RefCell;
+
+let shared = Rc::new(RefCell::new(vec![1, 2, 3]));
+
+let a = Rc::clone(&shared);
+let b = Rc::clone(&shared);
+
+a.borrow_mut().push(4);
+println!("{:?}", b.borrow());  // [1, 2, 3, 4]
+
+// ==================== Weak<T> - 弱引用 ====================
+use std::rc::{Rc, Weak};
+
+let strong = Rc::new(5);
+let weak: Weak<i32> = Rc::downgrade(&strong);
+
+// 升级为强引用
+if let Some(val) = weak.upgrade() {
+    println!("{}", val);
+}
+
+drop(strong);
+assert!(weak.upgrade().is_none());  // 已被释放
+
+// ==================== Cow<T> - 写时复制 ====================
+use std::borrow::Cow;
+
+fn process(s: Cow<str>) -> Cow<str> {
+    if s.contains("bad") {
+        // 需要修改时才分配
+        Cow::Owned(s.replace("bad", "good"))
+    } else {
+        s  // 不修改则保持借用
+    }
+}
+
+let borrowed: Cow<str> = Cow::Borrowed("hello");
+let owned: Cow<str> = Cow::Owned(String::from("world"));
+
+// ==================== Pin<T> - 固定内存位置 ====================
+use std::pin::Pin;
+use std::marker::PhantomPinned;
+
+struct Unmovable {
+    data: String,
+    _pin: PhantomPinned,
+}
+
+impl Unmovable {
+    fn new(data: String) -> Pin<Box<Self>> {
+        Box::pin(Unmovable {
+            data,
+            _pin: PhantomPinned,
+        })
+    }
+}
+
+// ==================== 指针比较 ====================
+let x = 5;
+let y = 5;
+let rx = &x;
+let ry = &y;
+
+// 值比较
+assert_eq!(*rx, *ry);
+
+// 指针比较
+assert!(!std::ptr::eq(rx, ry));
+
+let rz = rx;
+assert!(std::ptr::eq(rx, rz));
+```
+
+### 指针/引用对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 引用类型        │ 对象/数组自动        │ 所有对象自动         │ 显式 &/*/指针        │ 显式 &/&mut          │
+│ 获取地址        │ ❌                   │ id()                 │ &x                   │ &x / &mut x          │
+│ 解引用          │ 自动                 │ 自动                 │ *p                   │ *p                   │
+│ 空值            │ null/undefined       │ None                 │ nil                  │ Option<&T>           │
+│ 可变性控制      │ readonly             │ 约定                 │ 值/指针              │ &T / &mut T          │
+│ 悬垂指针        │ GC 防止              │ GC 防止              │ 可能                 │ 编译器阻止           │
+│ 线程安全        │ 隔离                 │ GIL                  │ 手动                 │ Send/Sync            │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 智能指针        │ ❌                   │ ❌                   │ ❌                   │ Box/Rc/Arc           │
+│ 引用计数        │ GC                   │ GC                   │ ❌                   │ Rc/Arc               │
+│ 弱引用          │ WeakRef              │ weakref              │ ❌                   │ Weak                 │
+│ 内部可变        │ ❌                   │ 默认可变             │ ❌                   │ Cell/RefCell         │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 使用场景指南
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| **共享只读数据** | 直接传递 | 直接传递 | 传值/指针 | `&T` |
+| **共享可变数据** | 对象引用 | 对象引用 | 传指针 `*T` | `&mut T` |
+| **多所有者共享** | 默认行为 | 默认行为 | 手动管理 | `Rc<T>`/`Arc<T>` |
+| **堆分配** | 自动 | 自动 | `new`/`make` | `Box<T>` |
+| **可选值** | `\| undefined` | `\| None` | `*T` (nil) | `Option<T>` |
+| **避免循环引用** | WeakRef | weakref | 手动 | `Weak<T>` |
+| **线程共享** | Worker隔离 | Queue | `sync` 包 | `Arc<Mutex<T>>` |
+
+### 常见陷阱
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Go: 在循环中取地址                                                          │
+│   for _, v := range items {                                                 │
+│       pointers = append(pointers, &v)  // 错误！都指向同一个 v              │
+│   }                                                                         │
+│   // 正确做法:                                                              │
+│   for i := range items {                                                    │
+│       pointers = append(pointers, &items[i])                                │
+│   }                                                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Rust: 同时持有可变和不可变引用                                               │
+│   let mut v = vec![1, 2, 3];                                                │
+│   let first = &v[0];                                                        │
+│   v.push(4);  // 编译错误！first 还在使用                                   │
+│   println!("{}", first);                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Python: 以为赋值会复制                                                       │
+│   a = [1, 2, 3]                                                             │
+│   b = a  # b 是 a 的引用，不是复制！                                        │
+│   b.append(4)                                                               │
+│   print(a)  # [1, 2, 3, 4]                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ TypeScript: 以为 const 能防止修改内容                                        │
+│   const arr = [1, 2, 3];                                                    │
+│   arr.push(4);  // OK! const 只防止重新赋值                                 │
+│   // arr = [5, 6];  // 这才会报错                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔄 枚举与状态机
+
+### 枚举类型概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 枚举关键字 | `enum` | `Enum` | `const/iota` | `enum` |
+| 关联数据 | ❌ | ❌ | ❌ | ✅ |
+| 模式匹配 | ❌ | ✅ match | switch | ✅ match |
+| 穷尽检查 | ❌ | ❌ | ❌ | ✅ |
+| 字符串枚举 | ✅ | ✅ | 手动 | 需派生 |
+| 位标志 | 手动 | `Flag` | `iota` | `bitflags` |
+
+### TypeScript 枚举
+
+```typescript
+// ==================== 数字枚举 ====================
+enum Direction {
+    Up,      // 0
+    Down,    // 1
+    Left,    // 2
+    Right,   // 3
+}
+
+// 指定值
+enum Status {
+    Pending = 1,
+    Active = 2,
+    Inactive = 4,
+    Deleted = 8,
+}
+
+// 使用
+const dir: Direction = Direction.Up;
+const name = Direction[0];  // "Up" (反向映射)
+
+// ==================== 字符串枚举 ====================
+enum Color {
+    Red = "RED",
+    Green = "GREEN",
+    Blue = "BLUE",
+}
+
+// 无反向映射
+const color: Color = Color.Red;
+
+// ==================== const 枚举 (编译时内联) ====================
+const enum HttpStatus {
+    OK = 200,
+    NotFound = 404,
+    ServerError = 500,
+}
+// 编译后直接内联为数字，无运行时对象
+
+// ==================== 联合类型替代枚举 (推荐) ====================
+type Direction = "up" | "down" | "left" | "right";
+type Status = "pending" | "active" | "inactive";
+
+// 更好的类型推断
+function move(dir: Direction) {
+    switch (dir) {
+        case "up": return { y: -1 };
+        case "down": return { y: 1 };
+        case "left": return { x: -1 };
+        case "right": return { x: 1 };
+    }
+}
+
+// ==================== 位标志 ====================
+enum Permission {
+    None = 0,
+    Read = 1 << 0,    // 1
+    Write = 1 << 1,   // 2
+    Execute = 1 << 2, // 4
+    All = Read | Write | Execute,
+}
+
+const perms = Permission.Read | Permission.Write;
+const canRead = (perms & Permission.Read) !== 0;
+
+// ==================== 状态机 ====================
+type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
+
+interface Order {
+    id: string;
+    status: OrderStatus;
+}
+
+// 状态转换规则
+const transitions: Record<OrderStatus, OrderStatus[]> = {
+    pending: ["confirmed", "cancelled"],
+    confirmed: ["shipped", "cancelled"],
+    shipped: ["delivered"],
+    delivered: [],
+    cancelled: [],
+};
+
+function canTransition(from: OrderStatus, to: OrderStatus): boolean {
+    return transitions[from].includes(to);
+}
+
+function transition(order: Order, newStatus: OrderStatus): Order {
+    if (!canTransition(order.status, newStatus)) {
+        throw new Error(`Cannot transition from ${order.status} to ${newStatus}`);
+    }
+    return { ...order, status: newStatus };
+}
+
+// ==================== 类型安全的状态机 ====================
+type State = 
+    | { type: "idle" }
+    | { type: "loading" }
+    | { type: "success"; data: string }
+    | { type: "error"; message: string };
+
+type Action = 
+    | { type: "FETCH" }
+    | { type: "SUCCESS"; data: string }
+    | { type: "ERROR"; message: string }
+    | { type: "RESET" };
+
+function reducer(state: State, action: Action): State {
+    switch (state.type) {
+        case "idle":
+            if (action.type === "FETCH") return { type: "loading" };
+            break;
+        case "loading":
+            if (action.type === "SUCCESS") return { type: "success", data: action.data };
+            if (action.type === "ERROR") return { type: "error", message: action.message };
+            break;
+        case "success":
+        case "error":
+            if (action.type === "RESET") return { type: "idle" };
+            break;
+    }
+    return state;
+}
+```
+
+### Python 枚举
+
+```python
+from enum import Enum, IntEnum, Flag, auto, unique
+
+# ==================== 基本枚举 ====================
+class Color(Enum):
+    RED = 1
+    GREEN = 2
+    BLUE = 3
+
+# 使用
+color = Color.RED
+print(color.name)   # "RED"
+print(color.value)  # 1
+
+# 迭代
+for c in Color:
+    print(c)
+
+# 比较
+Color.RED == Color.RED   # True
+Color.RED is Color.RED   # True
+
+# ==================== 自动值 ====================
+class Direction(Enum):
+    UP = auto()      # 1
+    DOWN = auto()    # 2
+    LEFT = auto()    # 3
+    RIGHT = auto()   # 4
+
+# ==================== 字符串枚举 ====================
+class Status(str, Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+# 可直接当字符串用
+print(f"Status: {Status.PENDING}")  # "Status: pending"
+
+# ==================== 整数枚举 ====================
+class HttpStatus(IntEnum):
+    OK = 200
+    NOT_FOUND = 404
+    SERVER_ERROR = 500
+
+# 可直接比较数字
+HttpStatus.OK == 200  # True
+
+# ==================== 唯一值约束 ====================
+@unique
+class Unique(Enum):
+    A = 1
+    B = 2
+    # C = 1  # 报错！值重复
+
+# ==================== 位标志 ====================
+class Permission(Flag):
+    NONE = 0
+    READ = auto()     # 1
+    WRITE = auto()    # 2
+    EXECUTE = auto()  # 4
+    ALL = READ | WRITE | EXECUTE
+
+perms = Permission.READ | Permission.WRITE
+Permission.READ in perms  # True
+
+# ==================== 模式匹配 (3.10+) ====================
+def describe_color(color: Color) -> str:
+    match color:
+        case Color.RED:
+            return "Hot color"
+        case Color.BLUE:
+            return "Cool color"
+        case Color.GREEN:
+            return "Nature color"
+
+# ==================== 状态机 ====================
+from enum import Enum
+from typing import Dict, Set
+
+class OrderStatus(Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+# 状态转换规则
+TRANSITIONS: Dict[OrderStatus, Set[OrderStatus]] = {
+    OrderStatus.PENDING: {OrderStatus.CONFIRMED, OrderStatus.CANCELLED},
+    OrderStatus.CONFIRMED: {OrderStatus.SHIPPED, OrderStatus.CANCELLED},
+    OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
+    OrderStatus.DELIVERED: set(),
+    OrderStatus.CANCELLED: set(),
+}
+
+class Order:
+    def __init__(self, id: str):
+        self.id = id
+        self._status = OrderStatus.PENDING
+    
+    @property
+    def status(self) -> OrderStatus:
+        return self._status
+    
+    def transition(self, new_status: OrderStatus) -> None:
+        if new_status not in TRANSITIONS[self._status]:
+            raise ValueError(
+                f"Cannot transition from {self._status.value} to {new_status.value}"
+            )
+        self._status = new_status
+
+# ==================== 带方法的枚举 ====================
+class Planet(Enum):
+    MERCURY = (3.303e+23, 2.4397e6)
+    VENUS = (4.869e+24, 6.0518e6)
+    EARTH = (5.976e+24, 6.37814e6)
+    
+    def __init__(self, mass: float, radius: float):
+        self.mass = mass
+        self.radius = radius
+    
+    @property
+    def surface_gravity(self) -> float:
+        G = 6.67430e-11
+        return G * self.mass / (self.radius ** 2)
+
+print(Planet.EARTH.surface_gravity)
+```
+
+### Go 枚举与状态机
+
+```go
+// ==================== iota 枚举 ====================
+type Direction int
+
+const (
+    Up Direction = iota  // 0
+    Down                 // 1
+    Left                 // 2
+    Right                // 3
+)
+
+// 方法
+func (d Direction) String() string {
+    return [...]string{"Up", "Down", "Left", "Right"}[d]
+}
+
+// ==================== 字符串枚举 ====================
+type Status string
+
+const (
+    StatusPending  Status = "pending"
+    StatusActive   Status = "active"
+    StatusInactive Status = "inactive"
+)
+
+// ==================== 位标志 ====================
+type Permission int
+
+const (
+    PermNone    Permission = 0
+    PermRead    Permission = 1 << iota  // 1
+    PermWrite                           // 2
+    PermExecute                         // 4
+    PermAll     = PermRead | PermWrite | PermExecute
+)
+
+func (p Permission) Has(flag Permission) bool {
+    return p&flag != 0
+}
+
+perms := PermRead | PermWrite
+perms.Has(PermRead)  // true
+
+// ==================== 状态机 ====================
+type OrderStatus int
+
+const (
+    OrderPending OrderStatus = iota
+    OrderConfirmed
+    OrderShipped
+    OrderDelivered
+    OrderCancelled
+)
+
+// 转换规则
+var transitions = map[OrderStatus][]OrderStatus{
+    OrderPending:   {OrderConfirmed, OrderCancelled},
+    OrderConfirmed: {OrderShipped, OrderCancelled},
+    OrderShipped:   {OrderDelivered},
+    OrderDelivered: {},
+    OrderCancelled: {},
+}
+
+type Order struct {
+    ID     string
+    Status OrderStatus
+}
+
+func (o *Order) CanTransition(to OrderStatus) bool {
+    allowed := transitions[o.Status]
+    for _, s := range allowed {
+        if s == to {
+            return true
+        }
+    }
+    return false
+}
+
+func (o *Order) Transition(to OrderStatus) error {
+    if !o.CanTransition(to) {
+        return fmt.Errorf("cannot transition from %d to %d", o.Status, to)
+    }
+    o.Status = to
+    return nil
+}
+
+// ==================== 接口状态机 ====================
+type State interface {
+    Handle(event Event) State
+    Name() string
+}
+
+type Event string
+
+const (
+    EventStart   Event = "start"
+    EventSuccess Event = "success"
+    EventError   Event = "error"
+    EventReset   Event = "reset"
+)
+
+// 具体状态
+type IdleState struct{}
+
+func (s IdleState) Handle(e Event) State {
+    if e == EventStart {
+        return LoadingState{}
+    }
+    return s
+}
+
+func (s IdleState) Name() string { return "idle" }
+
+type LoadingState struct{}
+
+func (s LoadingState) Handle(e Event) State {
+    switch e {
+    case EventSuccess:
+        return SuccessState{}
+    case EventError:
+        return ErrorState{}
+    }
+    return s
+}
+
+func (s LoadingState) Name() string { return "loading" }
+
+type SuccessState struct{}
+type ErrorState struct{}
+
+// 状态机
+type StateMachine struct {
+    current State
+}
+
+func (sm *StateMachine) Send(e Event) {
+    sm.current = sm.current.Handle(e)
+}
+
+// ==================== 函数式状态机 ====================
+type StateFunc func(Event) StateFunc
+
+func idleState(e Event) StateFunc {
+    if e == EventStart {
+        return loadingState
+    }
+    return idleState
+}
+
+func loadingState(e Event) StateFunc {
+    switch e {
+    case EventSuccess:
+        return successState
+    case EventError:
+        return errorState
+    }
+    return loadingState
+}
+
+func successState(e Event) StateFunc {
+    if e == EventReset {
+        return idleState
+    }
+    return successState
+}
+
+func errorState(e Event) StateFunc {
+    if e == EventReset {
+        return idleState
+    }
+    return errorState
+}
+```
+
+### Rust 枚举与状态机
+
+```rust
+// ==================== 基本枚举 ====================
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+// 使用
+let dir = Direction::Up;
+
+// 模式匹配 (必须穷尽)
+match dir {
+    Direction::Up => println!("Going up"),
+    Direction::Down => println!("Going down"),
+    Direction::Left => println!("Going left"),
+    Direction::Right => println!("Going right"),
+}
+
+// ==================== 带关联数据的枚举 (代数数据类型) ====================
+enum Message {
+    Quit,
+    Move { x: i32, y: i32 },
+    Write(String),
+    ChangeColor(i32, i32, i32),
+}
+
+let msg = Message::Move { x: 10, y: 20 };
+
+match msg {
+    Message::Quit => println!("Quit"),
+    Message::Move { x, y } => println!("Move to ({}, {})", x, y),
+    Message::Write(text) => println!("Text: {}", text),
+    Message::ChangeColor(r, g, b) => println!("Color: ({}, {}, {})", r, g, b),
+}
+
+// ==================== Option 和 Result ====================
+// 内置的带数据枚举
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+// if let 简化匹配
+if let Some(value) = maybe_value {
+    println!("Got: {}", value);
+}
+
+// ==================== 数值枚举 ====================
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(u8)]
+enum HttpStatus {
+    Ok = 200,
+    NotFound = 404,
+    ServerError = 500,
+}
+
+// ==================== 字符串转换 ====================
+use strum_macros::{Display, EnumString};
+
+#[derive(Debug, Display, EnumString)]
+enum Status {
+    #[strum(serialize = "pending")]
+    Pending,
+    #[strum(serialize = "active")]
+    Active,
+    #[strum(serialize = "inactive")]
+    Inactive,
+}
+
+let s: Status = "pending".parse().unwrap();
+println!("{}", Status::Active);  // "active"
+
+// ==================== 位标志 ====================
+use bitflags::bitflags;
+
+bitflags! {
+    struct Permission: u32 {
+        const NONE = 0;
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
+        const ALL = Self::READ.bits | Self::WRITE.bits | Self::EXECUTE.bits;
+    }
+}
+
+let perms = Permission::READ | Permission::WRITE;
+perms.contains(Permission::READ);  // true
+
+// ==================== 类型安全状态机 ====================
+// 使用类型状态模式
+struct Order<S> {
+    id: String,
+    state: S,
+}
+
+// 状态类型
+struct Pending;
+struct Confirmed;
+struct Shipped;
+struct Delivered;
+struct Cancelled;
+
+// 仅允许特定转换
+impl Order<Pending> {
+    fn new(id: String) -> Self {
+        Order { id, state: Pending }
+    }
+    
+    fn confirm(self) -> Order<Confirmed> {
+        Order { id: self.id, state: Confirmed }
+    }
+    
+    fn cancel(self) -> Order<Cancelled> {
+        Order { id: self.id, state: Cancelled }
+    }
+}
+
+impl Order<Confirmed> {
+    fn ship(self) -> Order<Shipped> {
+        Order { id: self.id, state: Shipped }
+    }
+    
+    fn cancel(self) -> Order<Cancelled> {
+        Order { id: self.id, state: Cancelled }
+    }
+}
+
+impl Order<Shipped> {
+    fn deliver(self) -> Order<Delivered> {
+        Order { id: self.id, state: Delivered }
+    }
+}
+
+// 使用 - 编译时检查状态转换
+let order = Order::new("123".to_string());
+let order = order.confirm();  // OK
+let order = order.ship();     // OK
+let order = order.deliver();  // OK
+// order.ship();  // 编译错误！Delivered 状态没有 ship 方法
+
+// ==================== 枚举状态机 ====================
+#[derive(Debug, Clone)]
+enum OrderState {
+    Pending,
+    Confirmed { confirmed_at: DateTime },
+    Shipped { shipped_at: DateTime, tracking: String },
+    Delivered { delivered_at: DateTime },
+    Cancelled { reason: String },
+}
+
+enum OrderEvent {
+    Confirm,
+    Ship { tracking: String },
+    Deliver,
+    Cancel { reason: String },
+}
+
+impl OrderState {
+    fn transition(self, event: OrderEvent) -> Result<OrderState, &'static str> {
+        match (self, event) {
+            (OrderState::Pending, OrderEvent::Confirm) => {
+                Ok(OrderState::Confirmed { confirmed_at: now() })
+            }
+            (OrderState::Pending, OrderEvent::Cancel { reason }) => {
+                Ok(OrderState::Cancelled { reason })
+            }
+            (OrderState::Confirmed { .. }, OrderEvent::Ship { tracking }) => {
+                Ok(OrderState::Shipped { shipped_at: now(), tracking })
+            }
+            (OrderState::Confirmed { .. }, OrderEvent::Cancel { reason }) => {
+                Ok(OrderState::Cancelled { reason })
+            }
+            (OrderState::Shipped { .. }, OrderEvent::Deliver) => {
+                Ok(OrderState::Delivered { delivered_at: now() })
+            }
+            _ => Err("Invalid state transition"),
+        }
+    }
+}
+
+// ==================== 带方法的枚举 ====================
+enum Shape {
+    Circle { radius: f64 },
+    Rectangle { width: f64, height: f64 },
+    Triangle { base: f64, height: f64 },
+}
+
+impl Shape {
+    fn area(&self) -> f64 {
+        match self {
+            Shape::Circle { radius } => std::f64::consts::PI * radius * radius,
+            Shape::Rectangle { width, height } => width * height,
+            Shape::Triangle { base, height } => 0.5 * base * height,
+        }
+    }
+}
+```
+
+### 枚举与状态机对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 枚举定义        │ enum E { A, B }      │ class E(Enum)        │ const + iota         │ enum E { A, B }      │
+│ 关联数据        │ ❌ (用联合类型)      │ ❌                   │ ❌                   │ ✅ E::A(data)        │
+│ 字符串枚举      │ enum E { A="a" }     │ class E(str,Enum)    │ type E string        │ strum 派生           │
+│ 位标志          │ 手动位运算           │ Flag 类              │ iota + 位运算        │ bitflags! 宏         │
+│ 穷尽检查        │ ❌                   │ ❌                   │ ❌                   │ ✅ 编译时            │
+│ 模式匹配        │ switch (有限)        │ match (3.10+)        │ switch               │ match (强大)         │
+│ 状态机类型安全  │ 联合类型             │ 运行时检查           │ 运行时检查           │ 类型状态模式         │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 状态机设计模式
+
+| 模式 | 描述 | 推荐语言 |
+|------|------|----------|
+| **转换表** | Map 存储允许的转换 | 全部 |
+| **状态接口** | 每个状态实现接口 | Go, TypeScript |
+| **类型状态** | 编译时状态检查 | Rust |
+| **代数数据类型** | 枚举带关联数据 | Rust |
+| **联合类型** | 类型安全的状态表示 | TypeScript |
+| **函数式** | 状态函数返回下一状态 | Go, Rust |
+
+### 状态机最佳实践
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. 明确定义所有状态和事件                                                    │
+│ 2. 使用转换表/矩阵明确允许的转换                                            │
+│ 3. 尽可能利用类型系统在编译时检查                                           │
+│ 4. 考虑状态携带的数据 (进入时间、关联信息等)                                │
+│ 5. 处理无效转换 (返回错误 vs 忽略 vs panic)                                 │
+│ 6. 考虑是否需要状态变更通知/回调                                            │
+│ 7. 测试所有状态转换路径                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -1970,16 +4243,16 @@ fn old_function() {}
 
 ### 日期类型概览
 
-| 语言 | 主要类型 | 时区支持 | 精度 |
-|------|----------|----------|------|
-| TypeScript | `Date` | 有限 | 毫秒 |
-| Python | `datetime` | 完善 (pytz/zoneinfo) | 微秒 |
-| Go | `time.Time` | 内置完善 | 纳秒 |
-| Rust | `chrono` crate | 完善 | 纳秒 |
+| 语言 | 主要类型 | 推荐库 | 时区支持 | 精度 |
+|------|----------|--------|----------|------|
+| TypeScript | `Date` | **dayjs** | dayjs: 完善 | 毫秒 |
+| Python | `datetime` | 内置 + dateutil | 完善 (zoneinfo) | 微秒 |
+| Go | `time.Time` | 内置 | 内置完善 | 纳秒 |
+| Rust | `chrono` | chrono | 完善 | 纳秒 |
 
 ### 创建日期
 
-**TypeScript**
+**TypeScript (原生 Date)**
 ```typescript
 // 当前时间
 const now = new Date();
@@ -1994,6 +4267,41 @@ const fromTimestamp = new Date(1710489600000);
 
 // ISO 字符串
 const iso = new Date('2024-03-15T10:30:00Z');
+```
+
+**TypeScript (dayjs - 推荐)**
+```typescript
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/zh-cn';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.extend(relativeTime);
+
+// 当前时间
+const now = dayjs();
+
+// 指定日期
+const date1 = dayjs('2024-03-15');
+const date2 = dayjs('2024-03-15 10:30:00');
+const date3 = dayjs({ year: 2024, month: 2, day: 15 });  // 月份从 0 开始
+
+// 时间戳
+const fromTimestamp = dayjs(1710489600000);
+const fromUnix = dayjs.unix(1710489600);
+
+// ISO 字符串
+const iso = dayjs('2024-03-15T10:30:00Z');
+
+// UTC
+const utcTime = dayjs.utc('2024-03-15');
+
+// 时区
+const tokyo = dayjs().tz('Asia/Tokyo');
+const shanghai = dayjs.tz('2024-03-15 10:00', 'Asia/Shanghai');
 ```
 
 **Python**
@@ -2068,7 +4376,7 @@ let parsed_dt = DateTime::parse_from_rfc3339("2024-03-15T10:30:00Z").unwrap();
 
 ### 日期格式化
 
-**TypeScript**
+**TypeScript (原生 Date)**
 ```typescript
 const date = new Date('2024-03-15T10:30:00');
 
@@ -2077,7 +4385,7 @@ date.toISOString();       // "2024-03-15T10:30:00.000Z"
 date.toLocaleDateString(); // "3/15/2024" (依赖 locale)
 date.toLocaleString('zh-CN'); // "2024/3/15 10:30:00"
 
-// Intl API (推荐)
+// Intl API
 const formatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
   month: '2-digit',
@@ -2086,10 +4394,30 @@ const formatter = new Intl.DateTimeFormat('zh-CN', {
   minute: '2-digit'
 });
 formatter.format(date);  // "2024/03/15 10:30"
+```
 
-// 手动格式化
-const pad = (n: number) => n.toString().padStart(2, '0');
-`${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+**TypeScript (dayjs - 推荐)**
+```typescript
+const d = dayjs('2024-03-15T10:30:00');
+
+// format 方法
+d.format('YYYY-MM-DD');              // "2024-03-15"
+d.format('YYYY年MM月DD日');           // "2024年03月15日"
+d.format('YYYY-MM-DD HH:mm:ss');     // "2024-03-15 10:30:00"
+d.format('dddd, MMMM D, YYYY');      // "Friday, March 15, 2024"
+d.format('YYYY/MM/DD HH:mm');        // "2024/03/15 10:30"
+
+// 本地化
+dayjs.locale('zh-cn');
+d.format('dddd');                    // "星期五"
+d.format('MMMM');                    // "三月"
+
+// ISO 格式
+d.toISOString();                     // "2024-03-15T10:30:00.000Z"
+d.toJSON();                          // "2024-03-15T10:30:00.000Z"
+
+// 常用格式
+d.format();                          // "2024-03-15T10:30:00+08:00" (默认 ISO)
 ```
 
 **Python**
@@ -2146,18 +4474,13 @@ dt.to_rfc2822()                             // "Fri, 15 Mar 2024 10:30:00 +0000"
 
 ### 日期差计算
 
-**TypeScript**
+**TypeScript (原生 Date)**
 ```typescript
 const date1 = new Date('2024-03-15');
 const date2 = new Date('2024-03-20');
 
 // 毫秒差
 const diffMs = date2.getTime() - date1.getTime();
-
-// 转换为各单位
-const diffSeconds = diffMs / 1000;
-const diffMinutes = diffMs / (1000 * 60);
-const diffHours = diffMs / (1000 * 60 * 60);
 const diffDays = diffMs / (1000 * 60 * 60 * 24);  // 5
 
 // 添加天数
@@ -2166,13 +4489,63 @@ const addDays = (date: Date, days: number): Date => {
   result.setDate(result.getDate() + days);
   return result;
 };
+```
 
-// 添加月份（注意月末边界）
-const addMonths = (date: Date, months: number): Date => {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
-};
+**TypeScript (dayjs - 推荐)**
+```typescript
+const d1 = dayjs('2024-03-15');
+const d2 = dayjs('2024-03-20');
+
+// 日期差 (需要 duration 插件或直接计算)
+d2.diff(d1, 'day');          // 5
+d2.diff(d1, 'hour');         // 120
+d2.diff(d1, 'month');        // 0
+d2.diff(d1, 'week');         // 0
+d2.diff(d1, 'year', true);   // 0.0136... (浮点数)
+
+// 添加时间 (返回新对象，不可变)
+d1.add(5, 'day');            // 2024-03-20
+d1.add(1, 'month');          // 2024-04-15
+d1.add(1, 'year');           // 2025-03-15
+d1.add(2, 'week');           // 2024-03-29
+d1.add(3, 'hour');           // 2024-03-15 03:00:00
+
+// 减少时间
+d1.subtract(1, 'month');     // 2024-02-15
+
+// 链式操作
+d1.add(1, 'month').subtract(5, 'day');
+
+// 相对时间 (需要 relativeTime 插件)
+dayjs().from(d1);            // "in X days" 或 "X days ago"
+dayjs().to(d1);              // "X days ago" 或 "in X days"
+d1.fromNow();                // "X days ago"
+d1.toNow();                  // "in X days"
+
+// 开始/结束
+d1.startOf('month');         // 2024-03-01 00:00:00
+d1.startOf('week');          // 周的第一天
+d1.startOf('day');           // 2024-03-15 00:00:00
+d1.endOf('month');           // 2024-03-31 23:59:59
+d1.endOf('year');            // 2024-12-31 23:59:59
+
+// 比较
+d1.isBefore(d2);             // true
+d1.isAfter(d2);              // false
+d1.isSame(d2, 'month');      // true (同一个月)
+d1.isBetween('2024-03-01', '2024-03-31');  // true (需要 isBetween 插件)
+
+// 获取/设置
+d1.year();                   // 2024
+d1.month();                  // 2 (0-11)
+d1.date();                   // 15
+d1.day();                    // 5 (周五, 0=周日)
+d1.hour();                   // 0
+d1.minute();                 // 0
+d1.second();                 // 0
+
+d1.year(2025);               // 设置年份，返回新对象
+d1.month(5);                 // 设置月份
 ```
 
 **Python**
@@ -7306,6 +9679,655 @@ Some(1).and(Some(2));  // Some(2)
 
 ---
 
+## 📍 变量作用域与代码块
+
+### 作用域概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 块级作用域 | ✅ `let/const` | ❌ | ✅ | ✅ |
+| 函数作用域 | ✅ `var` | ✅ | ✅ | ✅ |
+| 全局作用域 | ✅ | ✅ | ✅ (包级) | ✅ (crate级) |
+| 变量提升 | ✅ `var` | ❌ | ❌ | ❌ |
+| 暂时性死区 | ✅ `let/const` | ❌ | ❌ | ❌ |
+| 变量遮蔽 | ✅ | ✅ (嵌套) | ✅ `:=` | ✅ |
+| 块表达式 | ❌ | ❌ | ❌ | ✅ |
+
+### 作用域图解
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              作用域层级                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 全局/模块作用域                                                      │   │
+│  │                                                                     │   │
+│  │  ┌─────────────────────────────────────────────────────────────┐   │   │
+│  │  │ 函数作用域                                                   │   │   │
+│  │  │                                                             │   │   │
+│  │  │  ┌─────────────────────────────────────────────────────┐   │   │   │
+│  │  │  │ 块作用域 (if/for/while/{})                          │   │   │   │
+│  │  │  │                                                     │   │   │   │
+│  │  │  │  ┌─────────────────────────────────────────────┐   │   │   │   │
+│  │  │  │  │ 嵌套块作用域                                 │   │   │   │   │
+│  │  │  │  │  内层可访问外层变量                          │   │   │   │   │
+│  │  │  │  │  外层不可访问内层变量                        │   │   │   │   │
+│  │  │  │  └─────────────────────────────────────────────┘   │   │   │   │
+│  │  │  └─────────────────────────────────────────────────────┘   │   │   │
+│  │  └─────────────────────────────────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### TypeScript 作用域
+
+```typescript
+// ==================== var vs let vs const ====================
+// var - 函数作用域，有变量提升
+function varExample() {
+    console.log(x);  // undefined (提升但未初始化)
+    var x = 10;
+    
+    if (true) {
+        var x = 20;  // 同一个 x
+    }
+    console.log(x);  // 20
+}
+
+// let - 块级作用域，暂时性死区
+function letExample() {
+    // console.log(x);  // ReferenceError: 暂时性死区
+    let x = 10;
+    
+    if (true) {
+        let x = 20;  // 新的 x
+        console.log(x);  // 20
+    }
+    console.log(x);  // 10
+}
+
+// const - 块级作用域，不可重新赋值
+function constExample() {
+    const x = 10;
+    // x = 20;  // TypeError
+    
+    const obj = { a: 1 };
+    obj.a = 2;  // OK，可以修改属性
+    // obj = {};  // TypeError
+}
+
+// ==================== 块级作用域 {} ====================
+{
+    let blockScoped = "只在块内可见";
+    const alsoBlockScoped = "同样只在块内";
+    var notBlockScoped = "函数作用域";
+}
+// console.log(blockScoped);  // ReferenceError
+console.log(notBlockScoped);  // OK
+
+// ==================== 循环中的作用域 ====================
+// var 的经典陷阱
+for (var i = 0; i < 3; i++) {
+    setTimeout(() => console.log(i), 100);
+}
+// 输出: 3, 3, 3 (都是同一个 i)
+
+// let 解决问题
+for (let i = 0; i < 3; i++) {
+    setTimeout(() => console.log(i), 100);
+}
+// 输出: 0, 1, 2 (每次迭代新的 i)
+
+// ==================== 变量遮蔽 (Shadowing) ====================
+let value = 10;
+
+function outer() {
+    let value = 20;  // 遮蔽外层
+    
+    function inner() {
+        let value = 30;  // 再次遮蔽
+        console.log(value);  // 30
+    }
+    
+    inner();
+    console.log(value);  // 20
+}
+
+outer();
+console.log(value);  // 10
+
+// ==================== 闭包与作用域 ====================
+function createCounter() {
+    let count = 0;  // 被闭包捕获
+    
+    return {
+        increment: () => ++count,
+        decrement: () => --count,
+        getCount: () => count,
+    };
+}
+
+const counter = createCounter();
+counter.increment();
+counter.increment();
+console.log(counter.getCount());  // 2
+
+// ==================== 立即执行函数 (IIFE) ====================
+// 创建独立作用域
+(function() {
+    var privateVar = "不污染全局";
+    // ...
+})();
+
+// 现代替代：块 + let/const
+{
+    let privateVar = "不污染全局";
+    // ...
+}
+
+// ==================== 全局作用域 ====================
+// 浏览器: window
+// Node.js: global
+// 通用: globalThis
+
+globalThis.myGlobal = "全局变量";
+
+// 避免污染全局
+// 使用模块系统代替全局变量
+```
+
+### Python 作用域
+
+```python
+# ==================== LEGB 规则 ====================
+# Local -> Enclosing -> Global -> Built-in
+
+# Built-in (内置)
+print  # 内置函数
+
+# Global (全局/模块级)
+global_var = "全局变量"
+
+def outer():
+    # Enclosing (闭包)
+    enclosing_var = "闭包变量"
+    
+    def inner():
+        # Local (局部)
+        local_var = "局部变量"
+        
+        print(local_var)      # Local
+        print(enclosing_var)  # Enclosing
+        print(global_var)     # Global
+        print(len)            # Built-in
+
+# ==================== Python 没有块级作用域！ ====================
+if True:
+    x = 10  # 不是块级变量！
+
+print(x)  # 10 - 可以访问
+
+for i in range(3):
+    y = i
+
+print(i, y)  # 2, 2 - 循环变量泄漏
+
+# 列表推导式有自己的作用域 (Python 3)
+[z for z in range(3)]
+# print(z)  # NameError in Python 3 (Python 2 会泄漏)
+
+# ==================== global 关键字 ====================
+counter = 0
+
+def increment():
+    global counter  # 声明使用全局变量
+    counter += 1
+
+increment()
+print(counter)  # 1
+
+# 不使用 global
+def bad_increment():
+    # counter += 1  # UnboundLocalError
+    # 赋值会创建局部变量，但右侧引用了未定义的局部变量
+    pass
+
+# ==================== nonlocal 关键字 ====================
+def outer():
+    count = 0
+    
+    def inner():
+        nonlocal count  # 声明使用闭包变量
+        count += 1
+        return count
+    
+    return inner
+
+counter = outer()
+print(counter())  # 1
+print(counter())  # 2
+
+# ==================== 闭包陷阱 ====================
+# 经典错误
+functions = []
+for i in range(3):
+    functions.append(lambda: i)
+
+print([f() for f in functions])  # [2, 2, 2] - 都是最后的 i
+
+# 解决方案 1: 默认参数捕获
+functions = []
+for i in range(3):
+    functions.append(lambda i=i: i)  # i=i 捕获当前值
+
+print([f() for f in functions])  # [0, 1, 2]
+
+# 解决方案 2: 使用 functools.partial
+from functools import partial
+
+functions = []
+for i in range(3):
+    functions.append(partial(lambda x: x, i))
+
+# ==================== 模拟块级作用域 ====================
+# 方法 1: 函数
+def block():
+    x = "块内变量"
+    return x
+
+# 方法 2: 删除变量
+if True:
+    temp = expensive_computation()
+    result = process(temp)
+    del temp  # 手动清理
+
+# ==================== 类作用域 ====================
+class MyClass:
+    class_var = "类变量"  # 类级别
+    
+    def __init__(self):
+        self.instance_var = "实例变量"  # 实例级别
+    
+    def method(self):
+        local_var = "局部变量"  # 方法内局部
+        print(self.class_var)     # 通过 self 访问
+        print(MyClass.class_var)  # 通过类名访问
+```
+
+### Go 作用域
+
+```go
+// ==================== 块级作用域 ====================
+func blockScope() {
+    x := 10
+    
+    {
+        y := 20  // 只在块内可见
+        x := 30  // 遮蔽外层 x
+        fmt.Println(x, y)  // 30, 20
+    }
+    
+    // fmt.Println(y)  // 编译错误: undefined
+    fmt.Println(x)  // 10
+}
+
+// ==================== if/for/switch 作用域 ====================
+func controlScope() {
+    // if 初始化语句的变量只在 if 块内可见
+    if x := compute(); x > 0 {
+        fmt.Println(x)
+    } else {
+        fmt.Println(-x)
+    }
+    // fmt.Println(x)  // 编译错误
+    
+    // for 的变量只在循环内可见
+    for i := 0; i < 3; i++ {
+        fmt.Println(i)
+    }
+    // fmt.Println(i)  // 编译错误
+    
+    // switch 初始化
+    switch x := getValue(); x {
+    case 1:
+        fmt.Println("one")
+    default:
+        fmt.Println(x)
+    }
+}
+
+// ==================== 变量遮蔽 (Shadowing) ====================
+var x = 10  // 包级变量
+
+func shadowExample() {
+    fmt.Println(x)  // 10 - 包级
+    
+    x := 20  // 遮蔽包级变量
+    fmt.Println(x)  // 20
+    
+    {
+        x := 30  // 再次遮蔽
+        fmt.Println(x)  // 30
+    }
+    
+    fmt.Println(x)  // 20
+}
+
+// 常见陷阱: 短声明遮蔽
+func shadowTrap() error {
+    var err error
+    
+    if true {
+        result, err := doSomething()  // 新的 err，遮蔽外层！
+        if err != nil {
+            return err
+        }
+        _ = result
+    }
+    
+    return err  // 始终为 nil！
+}
+
+// 正确做法
+func shadowFixed() error {
+    var err error
+    var result int
+    
+    if true {
+        result, err = doSomething()  // = 不是 :=
+        if err != nil {
+            return err
+        }
+    }
+    
+    _ = result
+    return err
+}
+
+// ==================== 包级作用域 ====================
+package mypackage
+
+var PackageVar = "包内所有文件可见"    // 大写: 导出
+var privateVar = "仅包内可见"          // 小写: 私有
+
+const PackageConst = 100
+
+func init() {
+    // 包初始化时执行
+    // 可以访问包级变量
+}
+
+// ==================== 闭包与作用域 ====================
+func closureExample() {
+    count := 0
+    
+    increment := func() int {
+        count++  // 捕获外层变量
+        return count
+    }
+    
+    fmt.Println(increment())  // 1
+    fmt.Println(increment())  // 2
+}
+
+// 循环闭包陷阱
+func loopTrap() {
+    funcs := make([]func(), 3)
+    
+    for i := 0; i < 3; i++ {
+        funcs[i] = func() {
+            fmt.Println(i)  // 都引用同一个 i
+        }
+    }
+    
+    for _, f := range funcs {
+        f()  // 3, 3, 3
+    }
+}
+
+// 解决方案 1: 参数传递
+func loopFixed1() {
+    funcs := make([]func(), 3)
+    
+    for i := 0; i < 3; i++ {
+        funcs[i] = func(n int) func() {
+            return func() { fmt.Println(n) }
+        }(i)
+    }
+}
+
+// 解决方案 2: 局部变量
+func loopFixed2() {
+    funcs := make([]func(), 3)
+    
+    for i := 0; i < 3; i++ {
+        i := i  // 创建新的局部变量
+        funcs[i] = func() {
+            fmt.Println(i)
+        }
+    }
+}
+
+// Go 1.22+ 循环变量语义改变
+// for i := 0; i < 3; i++ 的 i 在每次迭代都是新变量
+```
+
+### Rust 作用域
+
+```rust
+// ==================== 块级作用域 ====================
+fn block_scope() {
+    let x = 10;
+    
+    {
+        let y = 20;  // 只在块内可见
+        let x = 30;  // 遮蔽外层 x
+        println!("{} {}", x, y);  // 30 20
+    }  // y 在这里被 drop
+    
+    // println!("{}", y);  // 编译错误
+    println!("{}", x);  // 10
+}
+
+// ==================== 变量遮蔽 (Shadowing) ====================
+fn shadowing() {
+    let x = 5;
+    let x = x + 1;  // 遮蔽，可以改变类型
+    
+    {
+        let x = x * 2;
+        println!("{}", x);  // 12
+    }
+    
+    println!("{}", x);  // 6
+    
+    // 遮蔽可以改变类型
+    let spaces = "   ";
+    let spaces = spaces.len();  // 从 &str 变成 usize
+}
+
+// 与 mut 的区别
+fn shadowing_vs_mut() {
+    // 遮蔽: 创建新变量
+    let x = 5;
+    let x = "hello";  // OK，新类型
+    
+    // mut: 可变绑定
+    let mut y = 5;
+    y = 10;  // OK，相同类型
+    // y = "hello";  // 编译错误，类型不匹配
+}
+
+// ==================== 块表达式 ====================
+fn block_expression() {
+    // 块可以返回值
+    let x = {
+        let a = 1;
+        let b = 2;
+        a + b  // 无分号 = 返回值
+    };
+    println!("{}", x);  // 3
+    
+    // if 是表达式
+    let y = if true { 1 } else { 2 };
+    
+    // match 是表达式
+    let z = match y {
+        1 => "one",
+        _ => "other",
+    };
+    
+    // loop 可以返回值
+    let result = loop {
+        break 42;
+    };
+}
+
+// ==================== 所有权与作用域 ====================
+fn ownership_scope() {
+    let s1 = String::from("hello");
+    
+    {
+        let s2 = s1;  // s1 移动到 s2
+        println!("{}", s2);
+    }  // s2 被 drop，内存释放
+    
+    // println!("{}", s1);  // 编译错误，s1 已移动
+}
+
+// 引用的生命周期与作用域
+fn reference_scope() {
+    let r;
+    
+    {
+        let x = 5;
+        r = &x;
+        println!("{}", r);  // OK
+    }  // x 被 drop
+    
+    // println!("{}", r);  // 编译错误，x 已不存在
+}
+
+// ==================== 非词法生命周期 (NLL) ====================
+fn nll_example() {
+    let mut data = vec![1, 2, 3];
+    
+    let first = &data[0];  // 不可变借用
+    println!("{}", first);
+    // first 的生命周期在这里结束 (NLL)
+    
+    data.push(4);  // 可变借用，NLL 使这成为可能
+}
+
+// ==================== 静态与常量 ====================
+// 全局静态变量
+static GLOBAL: &str = "全局静态";
+static mut MUTABLE_GLOBAL: i32 = 0;  // 需要 unsafe 访问
+
+// 常量 (编译时求值)
+const MAX_SIZE: usize = 100;
+
+fn static_example() {
+    println!("{}", GLOBAL);
+    
+    unsafe {
+        MUTABLE_GLOBAL += 1;  // 必须 unsafe
+    }
+}
+
+// ==================== 闭包捕获 ====================
+fn closure_capture() {
+    let x = 10;
+    let y = String::from("hello");
+    
+    // 不可变借用
+    let borrow = || println!("{} {}", x, y);
+    borrow();
+    println!("{}", y);  // y 仍可用
+    
+    // 可变借用
+    let mut count = 0;
+    let mut increment = || count += 1;
+    increment();
+    increment();
+    println!("{}", count);  // 2
+    
+    // move: 获取所有权
+    let owned = move || println!("{}", y);
+    owned();
+    // println!("{}", y);  // 编译错误，y 已移动
+}
+
+// ==================== Drop 顺序 ====================
+struct Droppable(i32);
+
+impl Drop for Droppable {
+    fn drop(&mut self) {
+        println!("Dropping {}", self.0);
+    }
+}
+
+fn drop_order() {
+    let a = Droppable(1);
+    let b = Droppable(2);
+    let c = Droppable(3);
+    
+    {
+        let d = Droppable(4);
+        let e = Droppable(5);
+    }  // 输出: Dropping 5, Dropping 4 (后声明先 drop)
+    
+    println!("End of function");
+}  // 输出: Dropping 3, Dropping 2, Dropping 1
+```
+
+### 作用域对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 块作用域        │ let/const            │ ❌                   │ ✅                   │ ✅                   │
+│ 函数作用域      │ var                  │ ✅                   │ ✅                   │ ✅                   │
+│ 变量提升        │ var                  │ ❌                   │ ❌                   │ ❌                   │
+│ 循环变量        │ let 每次新建         │ 共享/泄漏            │ 共享 (1.22 前)       │ 每次新建             │
+│ 遮蔽改类型      │ ❌ (需要断言)        │ ✅                   │ ❌                   │ ✅                   │
+│ 块返回值        │ ❌                   │ ❌                   │ ❌                   │ ✅                   │
+│ 全局声明        │ 顶层/window          │ 模块顶层             │ 包级 var             │ static/const         │
+│ 修改外层变量    │ 直接修改             │ global/nonlocal      │ 直接修改             │ &mut                 │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 常见陷阱与最佳实践
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TypeScript                                                                  │
+│ • 始终使用 let/const，避免 var                                              │
+│ • 注意 for 循环中 var 的闭包问题                                            │
+│ • const 不能防止对象属性修改                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Python                                                                      │
+│ • 记住没有块级作用域，if/for 内的变量会泄漏                                 │
+│ • 闭包捕获变量引用，循环中用默认参数捕获值                                  │
+│ • 修改全局变量需要 global，闭包变量需要 nonlocal                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Go                                                                          │
+│ • 注意 := 短声明可能意外遮蔽变量                                            │
+│ • Go 1.22 前循环变量是共享的，闭包需要复制                                  │
+│ • 包级变量用于共享状态，但要注意并发安全                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Rust                                                                        │
+│ • 遮蔽是惯用法，常用于类型转换                                              │
+│ • 理解所有权与作用域的关系                                                  │
+│ • 块表达式是强大的工具，善用返回值                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 🔧 函数
 
 ### 函数特性概览
@@ -7674,6 +10696,699 @@ impl Rectangle {
         self.height *= factor;
     }
 }
+```
+
+---
+
+## 📨 函数参数传递规则
+
+### 参数传递概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 基本类型 | 值传递 | 值传递(不可变) | 值传递 | 值传递(Move/Copy) |
+| 对象/结构体 | 引用传递 | 引用传递 | 值传递(复制) | Move(默认)/借用 |
+| 数组 | 引用传递 | 引用传递 | 值传递(复制) | Move/借用 |
+| 显式引用 | ❌ | ❌ | `*T` 指针 | `&T` / `&mut T` |
+| 修改原值 | 可以(对象) | 可以(可变对象) | 需要指针 | 需要 `&mut` |
+
+### 传递方式图解
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           参数传递方式                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  值传递 (Copy)                     引用传递 (Reference)                      │
+│  ┌─────────┐                      ┌─────────┐                               │
+│  │ 原始值   │                      │ 原始值   │                               │
+│  │   42    │                      │ {a: 1}  │◄─────────┐                    │
+│  └────┬────┘                      └─────────┘          │                    │
+│       │ 复制                                           │ 指向                │
+│       ▼                                                │                    │
+│  ┌─────────┐                      ┌─────────┐          │                    │
+│  │ 函数参数 │                      │ 函数参数 │──────────┘                    │
+│  │   42    │                      │   ref   │                               │
+│  └─────────┘                      └─────────┘                               │
+│  修改不影响原值                     修改会影响原值                             │
+│                                                                             │
+│  Move (Rust)                      Borrow (Rust)                             │
+│  ┌─────────┐                      ┌─────────┐                               │
+│  │ 原始值   │ ──转移──►            │ 原始值   │                               │
+│  │ (失效)  │                      │ String  │◄─────────┐                    │
+│  └─────────┘                      └─────────┘          │ 借用               │
+│                                                        │                    │
+│  ┌─────────┐                      ┌─────────┐          │                    │
+│  │ 函数参数 │                      │ 函数参数 │──────────┘                    │
+│  │ String  │ (拥有所有权)          │   &str  │ (只读借用)                     │
+│  └─────────┘                      └─────────┘                               │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### TypeScript 参数传递
+
+```typescript
+// ==================== 基本类型 - 值传递 ====================
+function modifyNumber(x: number): void {
+    x = 100;  // 不影响原值
+}
+
+let num = 42;
+modifyNumber(num);
+console.log(num);  // 42 - 未改变
+
+// 同样适用于 string, boolean, bigint, symbol
+function modifyString(s: string): void {
+    s = "modified";  // 不影响原值
+}
+
+let str = "original";
+modifyString(str);
+console.log(str);  // "original"
+
+// ==================== 对象 - 引用传递 ====================
+function modifyObject(obj: { value: number }): void {
+    obj.value = 100;  // 修改原对象
+}
+
+const myObj = { value: 42 };
+modifyObject(myObj);
+console.log(myObj.value);  // 100 - 已改变
+
+// 重新赋值不影响原引用
+function reassignObject(obj: { value: number }): void {
+    obj = { value: 999 };  // 创建新对象，不影响原引用
+}
+
+const myObj2 = { value: 42 };
+reassignObject(myObj2);
+console.log(myObj2.value);  // 42 - 未改变
+
+// ==================== 数组 - 引用传递 ====================
+function modifyArray(arr: number[]): void {
+    arr.push(4);      // 修改原数组
+    arr[0] = 100;     // 修改原数组
+}
+
+const myArr = [1, 2, 3];
+modifyArray(myArr);
+console.log(myArr);  // [100, 2, 3, 4]
+
+// 重新赋值不影响原引用
+function reassignArray(arr: number[]): void {
+    arr = [7, 8, 9];  // 不影响原数组
+}
+
+const myArr2 = [1, 2, 3];
+reassignArray(myArr2);
+console.log(myArr2);  // [1, 2, 3]
+
+// ==================== 防止修改 - 浅拷贝 ====================
+function safeModify(obj: { value: number }): { value: number } {
+    const copy = { ...obj };  // 浅拷贝
+    copy.value = 100;
+    return copy;
+}
+
+// 深拷贝
+function deepCopy<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj));
+}
+
+function safeDeepModify<T>(obj: T): T {
+    const copy = deepCopy(obj);
+    // 修改 copy...
+    return copy;
+}
+
+// ==================== readonly 防止修改 ====================
+function readOnly(arr: readonly number[]): void {
+    // arr.push(4);    // 编译错误
+    // arr[0] = 100;   // 编译错误
+    console.log(arr[0]);  // 只能读取
+}
+
+interface ReadonlyUser {
+    readonly id: number;
+    readonly name: string;
+}
+
+function processUser(user: ReadonlyUser): void {
+    // user.name = "new";  // 编译错误
+}
+
+// Readonly<T> 工具类型
+function immutableProcess(data: Readonly<{ x: number; y: number }>): void {
+    // data.x = 10;  // 编译错误
+}
+
+// ==================== 类实例 - 引用传递 ====================
+class Counter {
+    count = 0;
+    increment() { this.count++; }
+}
+
+function modifyCounter(c: Counter): void {
+    c.increment();  // 修改原实例
+}
+
+const counter = new Counter();
+modifyCounter(counter);
+console.log(counter.count);  // 1
+```
+
+### Python 参数传递
+
+```python
+# ==================== 不可变类型 - 值传递语义 ====================
+# int, float, str, tuple, frozenset 是不可变的
+def modify_number(x: int) -> None:
+    x = 100  # 创建新对象，不影响原值
+
+num = 42
+modify_number(num)
+print(num)  # 42 - 未改变
+
+def modify_string(s: str) -> None:
+    s = "modified"  # 创建新对象
+
+text = "original"
+modify_string(text)
+print(text)  # "original"
+
+# ==================== 可变类型 - 引用传递 ====================
+# list, dict, set, 自定义类 是可变的
+def modify_list(lst: list) -> None:
+    lst.append(4)    # 修改原列表
+    lst[0] = 100     # 修改原列表
+
+my_list = [1, 2, 3]
+modify_list(my_list)
+print(my_list)  # [100, 2, 3, 4]
+
+def modify_dict(d: dict) -> None:
+    d['new_key'] = 'value'  # 修改原字典
+
+my_dict = {'a': 1}
+modify_dict(my_dict)
+print(my_dict)  # {'a': 1, 'new_key': 'value'}
+
+# 重新赋值不影响原引用
+def reassign_list(lst: list) -> None:
+    lst = [7, 8, 9]  # 局部变量指向新对象
+
+my_list2 = [1, 2, 3]
+reassign_list(my_list2)
+print(my_list2)  # [1, 2, 3] - 未改变
+
+# ==================== 可变默认参数陷阱 ====================
+# 错误示例！
+def bad_append(item, lst=[]):  # 默认列表在所有调用间共享
+    lst.append(item)
+    return lst
+
+bad_append(1)  # [1]
+bad_append(2)  # [1, 2] - 不是 [2]！
+
+# 正确做法
+def good_append(item, lst=None):
+    if lst is None:
+        lst = []
+    lst.append(item)
+    return lst
+
+# ==================== 防止修改 - 拷贝 ====================
+import copy
+
+def safe_modify(lst: list) -> list:
+    copy_lst = lst.copy()  # 浅拷贝
+    # 或 copy_lst = lst[:]
+    # 或 copy_lst = list(lst)
+    copy_lst.append(4)
+    return copy_lst
+
+def deep_safe_modify(data: dict) -> dict:
+    copy_data = copy.deepcopy(data)  # 深拷贝
+    # 修改 copy_data...
+    return copy_data
+
+# ==================== 类型提示表达意图 ====================
+from typing import List, Sequence, MutableSequence
+
+# Sequence - 暗示不修改
+def read_only_process(items: Sequence[int]) -> int:
+    return sum(items)
+
+# MutableSequence - 明确会修改
+def will_modify(items: MutableSequence[int]) -> None:
+    items.append(0)
+
+# ==================== 类实例 ====================
+class User:
+    def __init__(self, name: str):
+        self.name = name
+
+def modify_user(user: User) -> None:
+    user.name = "Modified"  # 修改原实例
+
+u = User("Original")
+modify_user(u)
+print(u.name)  # "Modified"
+
+# ==================== dataclass 与不可变 ====================
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+@dataclass(frozen=True)  # 不可变
+class ImmutablePoint:
+    x: int
+    y: int
+
+def try_modify(p: ImmutablePoint) -> None:
+    # p.x = 10  # 运行时错误: FrozenInstanceError
+    pass
+
+# ==================== id() 查看对象标识 ====================
+def show_id(x):
+    print(f"Inside function: id = {id(x)}")
+
+num = 42
+print(f"Before: id = {id(num)}")
+show_id(num)  # 相同 id（小整数缓存）
+
+lst = [1, 2, 3]
+print(f"Before: id = {id(lst)}")
+show_id(lst)  # 相同 id - 同一个对象
+```
+
+### Go 参数传递
+
+```go
+// ==================== 基本类型 - 值传递 ====================
+func modifyInt(x int) {
+    x = 100  // 不影响原值
+}
+
+func main() {
+    num := 42
+    modifyInt(num)
+    fmt.Println(num)  // 42 - 未改变
+}
+
+// ==================== 结构体 - 值传递(复制) ====================
+type User struct {
+    Name string
+    Age  int
+}
+
+func modifyUser(u User) {
+    u.Name = "Modified"  // 修改的是副本
+}
+
+func main() {
+    user := User{Name: "Original", Age: 30}
+    modifyUser(user)
+    fmt.Println(user.Name)  // "Original" - 未改变
+}
+
+// ==================== 指针 - 引用传递 ====================
+func modifyUserPtr(u *User) {
+    u.Name = "Modified"  // 修改原结构体
+}
+
+func main() {
+    user := User{Name: "Original", Age: 30}
+    modifyUserPtr(&user)
+    fmt.Println(user.Name)  // "Modified" - 已改变
+}
+
+// ==================== 数组 - 值传递(复制) ====================
+func modifyArray(arr [3]int) {
+    arr[0] = 100  // 修改的是副本
+}
+
+func main() {
+    arr := [3]int{1, 2, 3}
+    modifyArray(arr)
+    fmt.Println(arr)  // [1 2 3] - 未改变
+}
+
+// ==================== 切片 - 引用语义 ====================
+// 切片本身是值传递，但底层数组是共享的
+func modifySlice(s []int) {
+    s[0] = 100        // 修改原数组
+    s = append(s, 4)  // 可能创建新数组，不影响原切片
+}
+
+func main() {
+    slice := []int{1, 2, 3}
+    modifySlice(slice)
+    fmt.Println(slice)  // [100 2 3] - 元素已改变，但长度不变
+}
+
+// 要修改切片本身（长度、容量），需要指针
+func appendSlice(s *[]int, val int) {
+    *s = append(*s, val)
+}
+
+func main() {
+    slice := []int{1, 2, 3}
+    appendSlice(&slice, 4)
+    fmt.Println(slice)  // [1 2 3 4]
+}
+
+// ==================== Map - 引用语义 ====================
+func modifyMap(m map[string]int) {
+    m["new"] = 100  // 修改原 map
+}
+
+func main() {
+    m := map[string]int{"a": 1}
+    modifyMap(m)
+    fmt.Println(m)  // map[a:1 new:100]
+}
+
+// ==================== Channel - 引用语义 ====================
+func sendToChannel(ch chan int) {
+    ch <- 42  // 发送到原 channel
+}
+
+// ==================== 接口 - 取决于底层类型 ====================
+func modifyInterface(i interface{}) {
+    // 需要类型断言才能修改
+    if ptr, ok := i.(*User); ok {
+        ptr.Name = "Modified"
+    }
+}
+
+// ==================== 防止修改 - 返回新值 ====================
+func safeModifyUser(u User) User {
+    u.Name = "Modified"
+    return u  // 返回修改后的副本
+}
+
+// 深拷贝结构体
+func deepCopyUser(u *User) User {
+    return User{
+        Name: u.Name,
+        Age:  u.Age,
+    }
+}
+
+// ==================== 何时使用指针 ====================
+// 1. 需要修改原值
+func (u *User) SetName(name string) {
+    u.Name = name
+}
+
+// 2. 大结构体避免复制开销
+type LargeStruct struct {
+    Data [1000000]int
+}
+
+func processLarge(ls *LargeStruct) {
+    // 只传递指针，不复制整个数组
+}
+
+// 3. 表示可选值 (nil)
+func findUser(id int) *User {
+    if id == 0 {
+        return nil
+    }
+    return &User{Name: "Found"}
+}
+
+// ==================== 接收者类型选择 ====================
+type Counter struct {
+    count int
+}
+
+// 值接收者 - 不修改原值
+func (c Counter) Value() int {
+    return c.count
+}
+
+// 指针接收者 - 修改原值
+func (c *Counter) Increment() {
+    c.count++
+}
+```
+
+### Rust 参数传递
+
+```rust
+// ==================== 所有权转移 (Move) ====================
+fn take_ownership(s: String) {
+    println!("{}", s);
+}  // s 在这里被 drop
+
+fn main() {
+    let s = String::from("hello");
+    take_ownership(s);
+    // println!("{}", s);  // 编译错误！s 已被移动
+}
+
+// ==================== Copy 类型 - 自动复制 ====================
+// 实现了 Copy trait 的类型会自动复制
+fn use_number(x: i32) {
+    println!("{}", x);
+}
+
+fn main() {
+    let num = 42;
+    use_number(num);
+    println!("{}", num);  // OK - i32 实现了 Copy
+}
+
+// Copy 类型包括: i32, f64, bool, char, 元组(如果元素都是Copy)
+// 非 Copy: String, Vec, Box, 自定义结构体(默认)
+
+// ==================== 借用 (Borrow) - 不可变引用 ====================
+fn borrow_string(s: &String) {
+    println!("{}", s);
+}  // 借用结束，不会 drop
+
+fn main() {
+    let s = String::from("hello");
+    borrow_string(&s);
+    println!("{}", s);  // OK - 只是借用
+}
+
+// 更好的做法：使用切片
+fn borrow_str(s: &str) {
+    println!("{}", s);
+}
+
+fn main() {
+    let s = String::from("hello");
+    borrow_str(&s);      // String 可以自动解引用为 &str
+    borrow_str("world"); // 字符串字面量也可以
+}
+
+// ==================== 可变借用 (Mutable Borrow) ====================
+fn modify_string(s: &mut String) {
+    s.push_str(" world");
+}
+
+fn main() {
+    let mut s = String::from("hello");
+    modify_string(&mut s);
+    println!("{}", s);  // "hello world"
+}
+
+// ==================== 借用规则 ====================
+fn main() {
+    let mut s = String::from("hello");
+    
+    // 规则1: 多个不可变借用 OK
+    let r1 = &s;
+    let r2 = &s;
+    println!("{} {}", r1, r2);
+    
+    // 规则2: 一个可变借用，不能有其他借用
+    let r3 = &mut s;
+    // let r4 = &s;       // 编译错误！
+    // let r5 = &mut s;   // 编译错误！
+    println!("{}", r3);
+}
+
+// ==================== 结构体所有权 ====================
+struct User {
+    name: String,
+    age: u32,
+}
+
+// 获取所有权
+fn take_user(user: User) {
+    println!("{}", user.name);
+}  // user 被 drop
+
+// 借用
+fn borrow_user(user: &User) {
+    println!("{}", user.name);
+}
+
+// 可变借用
+fn modify_user(user: &mut User) {
+    user.name = String::from("Modified");
+}
+
+// ==================== Clone - 显式复制 ====================
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1.clone();  // 显式深拷贝
+    
+    take_ownership(s1);
+    println!("{}", s2);  // OK - s2 是独立的副本
+}
+
+// ==================== 实现 Copy trait ====================
+#[derive(Copy, Clone)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn use_point(p: Point) {
+    println!("({}, {})", p.x, p.y);
+}
+
+fn main() {
+    let p = Point { x: 1, y: 2 };
+    use_point(p);
+    println!("{}", p.x);  // OK - Point 实现了 Copy
+}
+
+// 注意：包含非 Copy 字段的结构体不能实现 Copy
+// struct Invalid {
+//     name: String,  // String 没有实现 Copy
+// }
+// #[derive(Copy)]  // 编译错误！
+
+// ==================== 方法中的 self ====================
+struct Counter {
+    count: i32,
+}
+
+impl Counter {
+    // 获取所有权
+    fn consume(self) -> i32 {
+        self.count
+    }  // self 被 drop
+    
+    // 不可变借用
+    fn get(&self) -> i32 {
+        self.count
+    }
+    
+    // 可变借用
+    fn increment(&mut self) {
+        self.count += 1;
+    }
+}
+
+fn main() {
+    let mut c = Counter { count: 0 };
+    println!("{}", c.get());       // 借用
+    c.increment();                  // 可变借用
+    println!("{}", c.get());       // 借用
+    let final_count = c.consume(); // 移动
+    // c.get();  // 编译错误！c 已被移动
+}
+
+// ==================== 切片借用 ====================
+fn sum(slice: &[i32]) -> i32 {
+    slice.iter().sum()
+}
+
+fn main() {
+    let arr = [1, 2, 3, 4, 5];
+    let vec = vec![1, 2, 3, 4, 5];
+    
+    println!("{}", sum(&arr));     // 数组切片
+    println!("{}", sum(&vec));     // Vec 切片
+    println!("{}", sum(&arr[1..4])); // 部分切片
+}
+
+// ==================== 返回引用需要生命周期 ====================
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() { x } else { y }
+}
+
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = String::from("world!");
+    let result = longest(&s1, &s2);
+    println!("{}", result);
+}
+
+// ==================== Cow - 写时复制 ====================
+use std::borrow::Cow;
+
+fn process(input: &str) -> Cow<str> {
+    if input.contains("bad") {
+        // 需要修改时才分配
+        Cow::Owned(input.replace("bad", "good"))
+    } else {
+        // 不需要修改，返回借用
+        Cow::Borrowed(input)
+    }
+}
+```
+
+### 参数传递规则对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 类型            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 数字            │ 值传递               │ 不可变(值语义)       │ 值传递               │ Copy                 │
+│ 字符串          │ 值传递               │ 不可变(值语义)       │ 值传递               │ Move / &str          │
+│ 布尔            │ 值传递               │ 不可变(值语义)       │ 值传递               │ Copy                 │
+│ 数组/列表       │ 引用传递             │ 引用传递(可变)       │ 值传递(复制)         │ Move / &[T]          │
+│ 对象/结构体     │ 引用传递             │ 引用传递(可变)       │ 值传递(复制)         │ Move / &T            │
+│ Map/Dict        │ 引用传递             │ 引用传递(可变)       │ 引用传递             │ Move / &HashMap      │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 修改原值        │ 对象字段可改         │ 可变对象可改         │ 需要指针 *T          │ 需要 &mut T          │
+│ 防止修改        │ readonly / 拷贝      │ 拷贝 / frozen        │ 不传指针             │ 不传 &mut            │
+│ 显式复制        │ {...} / 深拷贝       │ copy.deepcopy        │ 手动赋值             │ .clone()             │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 最佳实践
+
+| 场景 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| **只读访问** | 直接传递 | 直接传递 | 值传递 | `&T` 借用 |
+| **需要修改** | 传对象 | 传可变对象 | 传指针 `*T` | `&mut T` |
+| **避免大对象复制** | 默认引用 | 默认引用 | 传指针 | 传引用 |
+| **防止意外修改** | `readonly` / 拷贝 | `frozen` / 拷贝 | 值传递 | 只传 `&T` |
+| **转移所有权** | N/A | N/A | N/A | 直接传递(move) |
+| **可选参数** | `?` / `undefined` | `= None` | `*T` (nil) | `Option<T>` |
+
+### 常见陷阱
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TypeScript: 以为修改了原值，实际重新赋值了引用                                │
+│   function f(arr) { arr = [1,2,3]; }  // 不影响原数组                       │
+│                                                                             │
+│ Python: 可变默认参数在所有调用间共享                                         │
+│   def f(lst=[]):  // 错误！应该用 lst=None                                  │
+│                                                                             │
+│ Go: 以为切片会自动扩容影响原切片                                             │
+│   func f(s []int) { s = append(s, 1) }  // 可能不影响原切片                 │
+│                                                                             │
+│ Rust: 忘记所有权已转移                                                       │
+│   let s = String::from("hi");                                               │
+│   take(s);                                                                  │
+│   println!("{}", s);  // 编译错误！                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -9290,6 +13005,1284 @@ fn process(id: u32) -> Result<()> {
 
 ---
 
+## 📋 JSON 处理
+
+### JSON 操作概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 解析 | `JSON.parse` | `json.loads` | `json.Unmarshal` | `serde_json::from_str` |
+| 序列化 | `JSON.stringify` | `json.dumps` | `json.Marshal` | `serde_json::to_string` |
+| 类型映射 | `interface`/`type` | `TypedDict`/`dataclass` | `struct` + tags | `struct` + `#[derive]` |
+| 流式解析 | 第三方库 | `ijson` | `json.Decoder` | `serde_json::StreamDeserializer` |
+| 动态访问 | 原生支持 | 原生支持 | `map[string]any` | `serde_json::Value` |
+
+### TypeScript JSON 操作
+
+```typescript
+// ==================== 基本解析与序列化 ====================
+// 解析 JSON 字符串
+const jsonStr = '{"name":"Alice","age":30}';
+const obj = JSON.parse(jsonStr);
+console.log(obj.name);  // "Alice"
+
+// 序列化为 JSON
+const user = { name: "Bob", age: 25 };
+const str = JSON.stringify(user);
+// '{"name":"Bob","age":25}'
+
+// 格式化输出
+JSON.stringify(user, null, 2);
+// {
+//   "name": "Bob",
+//   "age": 25
+// }
+
+// ==================== 类型安全解析 ====================
+interface User {
+    name: string;
+    age: number;
+    email?: string;
+}
+
+// 简单断言 (不安全)
+const user1 = JSON.parse(jsonStr) as User;
+
+// 类型守卫 (安全)
+function isUser(obj: unknown): obj is User {
+    return (
+        typeof obj === 'object' &&
+        obj !== null &&
+        'name' in obj &&
+        'age' in obj &&
+        typeof (obj as User).name === 'string' &&
+        typeof (obj as User).age === 'number'
+    );
+}
+
+const parsed = JSON.parse(jsonStr);
+if (isUser(parsed)) {
+    console.log(parsed.name);  // 类型安全
+}
+
+// 使用 zod 验证
+import { z } from 'zod';
+
+const UserSchema = z.object({
+    name: z.string(),
+    age: z.number().int().positive(),
+    email: z.string().email().optional(),
+});
+
+type User = z.infer<typeof UserSchema>;
+
+const result = UserSchema.safeParse(JSON.parse(jsonStr));
+if (result.success) {
+    console.log(result.data.name);
+}
+
+// ==================== 自定义序列化 ====================
+const user = {
+    name: "Alice",
+    password: "secret",
+    createdAt: new Date(),
+};
+
+// replacer 函数过滤字段
+JSON.stringify(user, (key, value) => {
+    if (key === 'password') return undefined;
+    return value;
+});
+// {"name":"Alice","createdAt":"2024-01-01T00:00:00.000Z"}
+
+// replacer 数组指定字段
+JSON.stringify(user, ['name', 'createdAt']);
+
+// toJSON 方法
+class User {
+    constructor(public name: string, public password: string) {}
+    
+    toJSON() {
+        return { name: this.name };  // 排除 password
+    }
+}
+
+// reviver 自定义解析
+const data = '{"date":"2024-01-01T00:00:00.000Z"}';
+const parsed = JSON.parse(data, (key, value) => {
+    if (key === 'date') return new Date(value);
+    return value;
+});
+
+// ==================== 深拷贝 ====================
+const original = { a: 1, nested: { b: 2 } };
+const copy = JSON.parse(JSON.stringify(original));
+
+// 注意: 会丢失 undefined、函数、Symbol、循环引用
+// 使用 structuredClone 更好
+const copy2 = structuredClone(original);
+
+// ==================== 动态 JSON ====================
+const json: Record<string, unknown> = JSON.parse(dynamicStr);
+
+// 安全访问
+const name = json?.user?.name;
+
+// 类型收窄
+if (typeof json.count === 'number') {
+    console.log(json.count + 1);
+}
+```
+
+### Python JSON 操作
+
+```python
+import json
+from typing import TypedDict, Any
+from dataclasses import dataclass, asdict
+from pydantic import BaseModel
+
+# ==================== 基本解析与序列化 ====================
+# 解析 JSON 字符串
+json_str = '{"name": "Alice", "age": 30}'
+data = json.loads(json_str)
+print(data['name'])  # "Alice"
+
+# 序列化为 JSON
+user = {"name": "Bob", "age": 25}
+json_str = json.dumps(user)
+
+# 格式化输出
+json.dumps(user, indent=2)
+json.dumps(user, indent=2, ensure_ascii=False)  # 支持中文
+
+# 文件读写
+with open('data.json', 'r') as f:
+    data = json.load(f)
+
+with open('output.json', 'w') as f:
+    json.dump(data, f, indent=2)
+
+# ==================== 类型化 JSON ====================
+# TypedDict
+class User(TypedDict):
+    name: str
+    age: int
+    email: str | None
+
+user: User = json.loads(json_str)  # 类型提示，无运行时检查
+
+# dataclass
+@dataclass
+class User:
+    name: str
+    age: int
+    email: str | None = None
+
+# 解析
+data = json.loads(json_str)
+user = User(**data)
+
+# 序列化
+json.dumps(asdict(user))
+
+# Pydantic (推荐)
+class User(BaseModel):
+    name: str
+    age: int
+    email: str | None = None
+
+# 解析并验证
+user = User.model_validate_json(json_str)
+user = User(**json.loads(json_str))
+
+# 序列化
+user.model_dump_json()
+user.model_dump()  # 转为 dict
+
+# ==================== 自定义序列化 ====================
+from datetime import datetime
+from enum import Enum
+
+class Status(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, Enum):
+            return obj.value
+        if hasattr(obj, '__dict__'):
+            return obj.__dict__
+        return super().default(obj)
+
+data = {
+    "created": datetime.now(),
+    "status": Status.ACTIVE,
+}
+json.dumps(data, cls=CustomEncoder)
+
+# object_hook 自定义解析
+def datetime_parser(dct):
+    for key, value in dct.items():
+        if isinstance(value, str):
+            try:
+                dct[key] = datetime.fromisoformat(value)
+            except ValueError:
+                pass
+    return dct
+
+json.loads(json_str, object_hook=datetime_parser)
+
+# ==================== 动态 JSON ====================
+# 任意 JSON
+data: dict[str, Any] = json.loads(dynamic_str)
+
+# 安全访问
+name = data.get('user', {}).get('name')
+
+# 递归访问
+def get_nested(data: dict, *keys, default=None):
+    for key in keys:
+        if isinstance(data, dict):
+            data = data.get(key, default)
+        else:
+            return default
+    return data
+
+get_nested(data, 'user', 'profile', 'name')
+
+# ==================== 大 JSON 流式处理 ====================
+import ijson
+
+# 流式解析大文件
+with open('large.json', 'rb') as f:
+    for item in ijson.items(f, 'items.item'):
+        process(item)
+
+# 增量构建
+with open('output.json', 'w') as f:
+    f.write('[')
+    for i, item in enumerate(items):
+        if i > 0:
+            f.write(',')
+        json.dump(item, f)
+    f.write(']')
+```
+
+### Go JSON 操作
+
+```go
+import (
+    "encoding/json"
+    "fmt"
+)
+
+// ==================== 基本解析与序列化 ====================
+// 解析到 map
+jsonStr := `{"name":"Alice","age":30}`
+var data map[string]interface{}
+json.Unmarshal([]byte(jsonStr), &data)
+fmt.Println(data["name"])  // Alice
+
+// 解析到结构体
+type User struct {
+    Name  string `json:"name"`
+    Age   int    `json:"age"`
+    Email string `json:"email,omitempty"`  // 可选
+}
+
+var user User
+json.Unmarshal([]byte(jsonStr), &user)
+
+// 序列化
+user := User{Name: "Bob", Age: 25}
+bytes, _ := json.Marshal(user)
+
+// 格式化输出
+json.MarshalIndent(user, "", "  ")
+
+// ==================== struct tags ====================
+type User struct {
+    ID        int       `json:"id"`
+    Name      string    `json:"name"`
+    Password  string    `json:"-"`               // 忽略
+    Email     string    `json:"email,omitempty"` // 空值省略
+    CreatedAt time.Time `json:"created_at"`
+    IsAdmin   bool      `json:"is_admin,string"` // 序列化为字符串
+}
+
+// ==================== 自定义序列化 ====================
+type Status int
+
+const (
+    StatusActive Status = iota
+    StatusInactive
+)
+
+func (s Status) MarshalJSON() ([]byte, error) {
+    var str string
+    switch s {
+    case StatusActive:
+        str = "active"
+    case StatusInactive:
+        str = "inactive"
+    }
+    return json.Marshal(str)
+}
+
+func (s *Status) UnmarshalJSON(data []byte) error {
+    var str string
+    if err := json.Unmarshal(data, &str); err != nil {
+        return err
+    }
+    switch str {
+    case "active":
+        *s = StatusActive
+    case "inactive":
+        *s = StatusInactive
+    }
+    return nil
+}
+
+// 时间格式自定义
+type CustomTime time.Time
+
+func (t CustomTime) MarshalJSON() ([]byte, error) {
+    return json.Marshal(time.Time(t).Format("2006-01-02"))
+}
+
+// ==================== 动态 JSON ====================
+// 使用 map
+var data map[string]interface{}
+json.Unmarshal([]byte(jsonStr), &data)
+
+// 类型断言
+if name, ok := data["name"].(string); ok {
+    fmt.Println(name)
+}
+
+// 嵌套访问
+if user, ok := data["user"].(map[string]interface{}); ok {
+    if name, ok := user["name"].(string); ok {
+        fmt.Println(name)
+    }
+}
+
+// json.RawMessage 延迟解析
+type Response struct {
+    Type string          `json:"type"`
+    Data json.RawMessage `json:"data"`
+}
+
+var resp Response
+json.Unmarshal([]byte(jsonStr), &resp)
+
+// 根据 Type 解析 Data
+switch resp.Type {
+case "user":
+    var user User
+    json.Unmarshal(resp.Data, &user)
+case "product":
+    var product Product
+    json.Unmarshal(resp.Data, &product)
+}
+
+// ==================== 流式处理 ====================
+// Decoder 流式解析
+file, _ := os.Open("large.json")
+defer file.Close()
+
+decoder := json.NewDecoder(file)
+
+// 读取开始的 [
+decoder.Token()
+
+// 逐个读取元素
+for decoder.More() {
+    var item Item
+    decoder.Decode(&item)
+    process(item)
+}
+
+// Encoder 流式写入
+file, _ := os.Create("output.json")
+encoder := json.NewEncoder(file)
+encoder.SetIndent("", "  ")
+encoder.Encode(data)
+
+// ==================== 验证 ====================
+// 使用 go-playground/validator
+type User struct {
+    Name  string `json:"name" validate:"required,min=1,max=100"`
+    Email string `json:"email" validate:"required,email"`
+    Age   int    `json:"age" validate:"gte=0,lte=150"`
+}
+
+validate := validator.New()
+if err := validate.Struct(user); err != nil {
+    // 处理验证错误
+}
+```
+
+### Rust JSON 操作
+
+```rust
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+// ==================== 基本解析与序列化 ====================
+// 解析到结构体
+#[derive(Debug, Deserialize, Serialize)]
+struct User {
+    name: String,
+    age: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+}
+
+let json_str = r#"{"name":"Alice","age":30}"#;
+let user: User = serde_json::from_str(json_str)?;
+
+// 序列化
+let user = User { name: "Bob".into(), age: 25, email: None };
+let json = serde_json::to_string(&user)?;
+let json_pretty = serde_json::to_string_pretty(&user)?;
+
+// ==================== serde 属性 ====================
+#[derive(Deserialize, Serialize)]
+struct User {
+    #[serde(rename = "userName")]
+    name: String,
+    
+    #[serde(default)]
+    age: u32,
+    
+    #[serde(skip)]
+    password: String,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+    
+    #[serde(rename = "createdAt")]
+    #[serde(with = "chrono::serde::ts_seconds")]
+    created_at: DateTime<Utc>,
+    
+    #[serde(flatten)]
+    extra: HashMap<String, Value>,
+}
+
+// 枚举序列化
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Status {
+    Active,
+    Inactive,
+    #[serde(rename = "pending_review")]
+    PendingReview,
+}
+
+// 标签枚举
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type")]
+enum Message {
+    #[serde(rename = "text")]
+    Text { content: String },
+    #[serde(rename = "image")]
+    Image { url: String, width: u32 },
+}
+
+// ==================== 自定义序列化 ====================
+use serde::{Deserializer, Serializer};
+
+fn serialize_uppercase<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&value.to_uppercase())
+}
+
+fn deserialize_string_or_int<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt {
+        String(String),
+        Int(i64),
+    }
+    
+    match StringOrInt::deserialize(deserializer)? {
+        StringOrInt::String(s) => Ok(s),
+        StringOrInt::Int(i) => Ok(i.to_string()),
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct Data {
+    #[serde(serialize_with = "serialize_uppercase")]
+    name: String,
+    
+    #[serde(deserialize_with = "deserialize_string_or_int")]
+    id: String,
+}
+
+// ==================== 动态 JSON ====================
+// serde_json::Value
+let data: Value = serde_json::from_str(json_str)?;
+
+// 访问
+let name = data["name"].as_str();
+let age = data["user"]["age"].as_u64();
+
+// json! 宏构建
+let value = json!({
+    "name": "Alice",
+    "age": 30,
+    "tags": ["rust", "json"],
+    "active": true,
+    "metadata": null
+});
+
+// 修改
+let mut data: Value = serde_json::from_str(json_str)?;
+data["name"] = json!("Bob");
+data["extra"] = json!({"key": "value"});
+
+// 类型检查
+if data.is_object() {
+    if let Some(obj) = data.as_object() {
+        for (key, value) in obj {
+            println!("{}: {}", key, value);
+        }
+    }
+}
+
+// ==================== 流式处理 ====================
+use std::io::BufReader;
+
+// 流式读取
+let file = File::open("large.json")?;
+let reader = BufReader::new(file);
+let stream = serde_json::Deserializer::from_reader(reader)
+    .into_iter::<Value>();
+
+for item in stream {
+    let item = item?;
+    process(item);
+}
+
+// 流式写入
+let file = File::create("output.json")?;
+let mut ser = serde_json::Serializer::pretty(file);
+data.serialize(&mut ser)?;
+
+// ==================== 验证 ====================
+use validator::Validate;
+
+#[derive(Debug, Deserialize, Validate)]
+struct User {
+    #[validate(length(min = 1, max = 100))]
+    name: String,
+    
+    #[validate(email)]
+    email: String,
+    
+    #[validate(range(min = 0, max = 150))]
+    age: u32,
+}
+
+let user: User = serde_json::from_str(json_str)?;
+user.validate()?;
+```
+
+### JSON 操作对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 解析            │ JSON.parse           │ json.loads           │ json.Unmarshal       │ serde_json::from_str │
+│ 序列化          │ JSON.stringify       │ json.dumps           │ json.Marshal         │ serde_json::to_string│
+│ 格式化          │ stringify(x,null,2)  │ dumps(indent=2)      │ MarshalIndent        │ to_string_pretty     │
+│ 字段重命名      │ 手动                 │ alias                │ `json:"name"`        │ #[serde(rename)]     │
+│ 忽略字段        │ replacer             │ exclude              │ `json:"-"`           │ #[serde(skip)]       │
+│ 可选字段        │ ?: undefined         │ None                 │ omitempty            │ Option + skip_if     │
+│ 动态类型        │ any / unknown        │ dict[str, Any]       │ map[string]any       │ Value                │
+│ 验证            │ zod                  │ pydantic             │ validator            │ validator            │
+│ 流式解析        │ 第三方               │ ijson                │ json.Decoder         │ Deserializer::iter   │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### JSON 最佳实践
+
+| 场景 | 推荐做法 |
+|------|----------|
+| **API 响应** | 定义类型/结构体，使用验证库 |
+| **配置文件** | 使用类型化解析，提供默认值 |
+| **大文件** | 流式解析，避免一次性加载 |
+| **动态 JSON** | 使用 Value 类型，做好类型检查 |
+| **日期时间** | 使用 ISO 8601 格式，自定义序列化器 |
+| **敏感字段** | 使用 skip/忽略标记，不序列化 |
+| **枚举** | 序列化为字符串而非数字 |
+
+---
+
+## 📁 文件系统与 IO
+
+### IO 操作概览
+
+| 特性 | TypeScript (Node) | Python | Go | Rust |
+|------|-------------------|--------|-----|------|
+| 同步读写 | `fs.readFileSync` | `open().read()` | `os.ReadFile` | `std::fs::read` |
+| 异步读写 | `fs/promises` | `aiofiles` | goroutine | `tokio::fs` |
+| 流式读写 | `createReadStream` | 迭代器 | `bufio` | `BufReader` |
+| 路径处理 | `path` | `pathlib` | `filepath` | `std::path` |
+| 目录操作 | `fs.mkdir/readdir` | `os/pathlib` | `os` | `std::fs` |
+
+### TypeScript 文件操作
+
+```typescript
+import * as fs from 'fs';
+import * as fsp from 'fs/promises';
+import * as path from 'path';
+
+// ==================== 同步操作 ====================
+const content = fs.readFileSync('file.txt', 'utf-8');
+fs.writeFileSync('output.txt', 'Hello World');
+fs.appendFileSync('log.txt', 'New line\n');
+
+// ==================== 异步操作 (Promise) ====================
+const content = await fsp.readFile('file.txt', 'utf-8');
+await fsp.writeFile('output.txt', 'Hello World');
+
+// ==================== 流式操作 ====================
+import { createReadStream, createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
+
+const readStream = createReadStream('large-file.txt');
+for await (const chunk of readStream) {
+    process(chunk);
+}
+
+await pipeline(
+    createReadStream('source.txt'),
+    createWriteStream('dest.txt')
+);
+
+// ==================== 目录操作 ====================
+await fsp.mkdir('new-dir', { recursive: true });
+const entries = await fsp.readdir('.', { withFileTypes: true });
+await fsp.rm('dir', { recursive: true });
+
+// ==================== 路径处理 ====================
+path.join('dir', 'subdir', 'file.txt');
+path.resolve('relative');
+path.dirname('/a/b/c.txt');   // /a/b
+path.basename('/a/b/c.txt');  // c.txt
+path.extname('file.txt');     // .txt
+```
+
+### Python 文件操作
+
+```python
+from pathlib import Path
+import aiofiles
+
+# ==================== 同步操作 ====================
+content = Path('file.txt').read_text(encoding='utf-8')
+Path('output.txt').write_text('Hello World')
+
+with open('file.txt', 'r') as f:
+    for line in f:
+        print(line.strip())
+
+# ==================== 异步操作 ====================
+async with aiofiles.open('file.txt', 'r') as f:
+    content = await f.read()
+
+# ==================== pathlib (推荐) ====================
+p = Path('dir/subdir/file.txt')
+p.parent          # dir/subdir
+p.name            # file.txt
+p.suffix          # .txt
+new_path = Path('dir') / 'subdir' / 'file.txt'
+
+# ==================== 目录操作 ====================
+Path('new-dir').mkdir(parents=True, exist_ok=True)
+list(Path('.').rglob('*.py'))  # 递归查找
+import shutil
+shutil.rmtree('dir')
+```
+
+### Go 文件操作
+
+```go
+import (
+    "bufio"
+    "io"
+    "os"
+    "path/filepath"
+)
+
+// ==================== 同步操作 ====================
+content, _ := os.ReadFile("file.txt")
+os.WriteFile("output.txt", []byte("Hello"), 0644)
+
+// ==================== 缓冲读写 ====================
+f, _ := os.Open("file.txt")
+defer f.Close()
+scanner := bufio.NewScanner(f)
+for scanner.Scan() {
+    fmt.Println(scanner.Text())
+}
+
+// ==================== 目录操作 ====================
+os.MkdirAll("path/to/dir", 0755)
+entries, _ := os.ReadDir(".")
+filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+    fmt.Println(path)
+    return nil
+})
+
+// ==================== 路径处理 ====================
+filepath.Join("dir", "subdir", "file.txt")
+filepath.Dir("/a/b/c.txt")   // /a/b
+filepath.Base("/a/b/c.txt")  // c.txt
+```
+
+### Rust 文件操作
+
+```rust
+use std::fs;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+
+// ==================== 同步操作 ====================
+let content = fs::read_to_string("file.txt")?;
+fs::write("output.txt", "Hello World")?;
+
+// ==================== 缓冲读取 ====================
+let file = fs::File::open("file.txt")?;
+for line in BufReader::new(file).lines() {
+    println!("{}", line?);
+}
+
+// ==================== 异步操作 (tokio) ====================
+let content = tokio::fs::read_to_string("file.txt").await?;
+tokio::fs::write("output.txt", "Hello").await?;
+
+// ==================== 目录操作 ====================
+fs::create_dir_all("path/to/dir")?;
+for entry in fs::read_dir(".")? {
+    println!("{:?}", entry?.path());
+}
+
+// ==================== 路径处理 ====================
+let path = Path::new("dir").join("file.txt");
+path.parent();      // Some("dir")
+path.file_name();   // Some("file.txt")
+path.extension();   // Some("txt")
+```
+
+### 路径处理详解
+
+#### 路径操作概览
+
+| 操作 | TypeScript (path) | Python (pathlib) | Go (filepath) | Rust (std::path) |
+|------|-------------------|------------------|---------------|------------------|
+| 拼接 | `path.join()` | `Path() / "sub"` | `filepath.Join()` | `Path::join()` |
+| 父目录 | `path.dirname()` | `.parent` | `filepath.Dir()` | `.parent()` |
+| 文件名 | `path.basename()` | `.name` | `filepath.Base()` | `.file_name()` |
+| 扩展名 | `path.extname()` | `.suffix` | `filepath.Ext()` | `.extension()` |
+| 绝对路径 | `path.resolve()` | `.resolve()` | `filepath.Abs()` | `fs::canonicalize()` |
+| 相对路径 | `path.relative()` | `.relative_to()` | `filepath.Rel()` | `pathdiff::diff_paths` |
+| 规范化 | `path.normalize()` | `.resolve()` | `filepath.Clean()` | `fs::canonicalize()` |
+| 是否绝对 | `path.isAbsolute()` | `.is_absolute()` | `filepath.IsAbs()` | `.is_absolute()` |
+
+#### TypeScript 路径操作
+
+```typescript
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+// ==================== 路径拼接 ====================
+path.join('dir', 'subdir', 'file.txt');        // dir/subdir/file.txt
+path.join('/root', 'dir', '..', 'other');      // /root/other (自动处理 ..)
+
+// Windows 兼容
+path.posix.join('a', 'b');   // a/b (始终用 /)
+path.win32.join('a', 'b');   // a\b (始终用 \)
+
+// ==================== 路径解析 ====================
+path.dirname('/a/b/c.txt');     // /a/b
+path.basename('/a/b/c.txt');    // c.txt
+path.basename('/a/b/c.txt', '.txt');  // c (去除扩展名)
+path.extname('file.txt');       // .txt
+path.extname('file.tar.gz');    // .gz
+path.extname('file');           // '' (空字符串)
+
+// 完整解析
+path.parse('/home/user/file.txt');
+// {
+//   root: '/',
+//   dir: '/home/user',
+//   base: 'file.txt',
+//   ext: '.txt',
+//   name: 'file'
+// }
+
+// 从组件构建
+path.format({
+    root: '/',
+    dir: '/home/user',
+    name: 'file',
+    ext: '.txt'
+});  // /home/user/file.txt
+
+// ==================== 绝对路径与相对路径 ====================
+path.resolve('relative/path');           // 基于 cwd 的绝对路径
+path.resolve('/root', 'relative');       // /root/relative
+path.resolve('/a', '/b', 'c');           // /b/c (遇到绝对路径重新开始)
+
+path.relative('/a/b/c', '/a/d/e');       // ../../d/e
+path.relative('/a/b', '/a/b/c/d');       // c/d
+
+path.isAbsolute('/root');   // true
+path.isAbsolute('relative'); // false
+
+// ==================== 规范化 ====================
+path.normalize('/a/b/../c/./d');  // /a/c/d
+path.normalize('a//b//c');        // a/b/c
+
+// ==================== ES Module 中获取 __dirname ====================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ==================== 常用模式 ====================
+// 获取当前脚本所在目录的文件
+const configPath = path.join(__dirname, 'config.json');
+
+// 确保扩展名
+function ensureExtension(file: string, ext: string): string {
+    return path.extname(file) === ext ? file : file + ext;
+}
+
+// 安全的路径拼接 (防止目录遍历攻击)
+function safePath(base: string, userInput: string): string | null {
+    const resolved = path.resolve(base, userInput);
+    if (!resolved.startsWith(base)) {
+        return null;  // 尝试逃逸基目录
+    }
+    return resolved;
+}
+```
+
+#### Python 路径操作
+
+```python
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+import os
+
+# ==================== 创建路径 ====================
+p = Path('dir/subdir/file.txt')
+p = Path('dir') / 'subdir' / 'file.txt'  # 推荐：/ 运算符
+p = Path.home() / 'documents'            # 用户主目录
+p = Path.cwd() / 'relative'              # 当前工作目录
+
+# ==================== 路径组件 ====================
+p = Path('/home/user/file.txt')
+
+p.parts         # ('/', 'home', 'user', 'file.txt')
+p.parent        # Path('/home/user')
+p.parents[0]    # Path('/home/user')
+p.parents[1]    # Path('/home')
+p.name          # 'file.txt'
+p.stem          # 'file'
+p.suffix        # '.txt'
+p.suffixes      # ['.txt']
+
+Path('file.tar.gz').suffixes  # ['.tar', '.gz']
+Path('file.tar.gz').stem      # 'file.tar'
+
+# ==================== 路径修改 ====================
+p = Path('/home/user/file.txt')
+
+p.with_name('other.txt')      # /home/user/other.txt
+p.with_stem('other')          # /home/user/other.txt (Python 3.9+)
+p.with_suffix('.md')          # /home/user/file.md
+p.with_suffix('')             # /home/user/file (去除扩展名)
+
+# ==================== 绝对路径与相对路径 ====================
+Path('relative').resolve()           # 绝对路径
+Path('relative').absolute()          # 绝对路径 (不解析符号链接)
+
+Path('/a/b/c').relative_to('/a')     # Path('b/c')
+Path('/a/b/c').relative_to('/a/b')   # Path('c')
+# Path('/a/b').relative_to('/c')     # ValueError
+
+Path('/root').is_absolute()   # True
+Path('relative').is_absolute() # False
+
+# ==================== 路径匹配 ====================
+p = Path('/home/user/file.txt')
+
+p.match('*.txt')              # True
+p.match('user/*.txt')         # True
+p.match('/home/*/*.txt')      # True
+
+# glob 模式
+list(Path('.').glob('*.py'))        # 当前目录的 .py 文件
+list(Path('.').glob('**/*.py'))     # 递归所有 .py 文件
+list(Path('.').rglob('*.py'))       # 同上，更简洁
+
+# ==================== 路径比较 ====================
+Path('/a/b') == Path('/a/b')        # True
+Path('/a/b') == Path('/a/b/')       # True (规范化比较)
+Path('a/b') == Path('a//b')         # True
+
+# 检查包含关系
+Path('/a/b/c').is_relative_to('/a')  # True (Python 3.9+)
+
+# ==================== 跨平台路径 ====================
+# 纯路径 (不访问文件系统)
+PurePosixPath('/a/b/c')     # Unix 风格
+PureWindowsPath('C:\\a\\b')  # Windows 风格
+
+# 当前系统
+PurePath('/a/b')  # 自动选择
+
+# ==================== 常用模式 ====================
+# 安全的路径拼接
+def safe_join(base: Path, user_input: str) -> Path | None:
+    try:
+        result = (base / user_input).resolve()
+        result.relative_to(base.resolve())
+        return result
+    except ValueError:
+        return None  # 尝试逃逸
+
+# 确保目录存在
+def ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+# 唯一文件名
+def unique_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem, suffix = path.stem, path.suffix
+    counter = 1
+    while True:
+        new_path = path.with_name(f"{stem}_{counter}{suffix}")
+        if not new_path.exists():
+            return new_path
+        counter += 1
+```
+
+#### Go 路径操作
+
+```go
+import (
+    "os"
+    "path"
+    "path/filepath"
+)
+
+// ==================== filepath vs path ====================
+// filepath: 操作系统相关，处理文件系统路径
+// path: 始终使用 / 分隔符，用于 URL 等
+
+// ==================== 路径拼接 ====================
+filepath.Join("dir", "subdir", "file.txt")  // dir/subdir/file.txt (或 dir\subdir\file.txt)
+filepath.Join("/root", "dir", "..", "other") // /root/other
+
+path.Join("a", "b", "c")  // a/b/c (始终用 /)
+
+// ==================== 路径解析 ====================
+filepath.Dir("/a/b/c.txt")      // /a/b
+filepath.Base("/a/b/c.txt")     // c.txt
+filepath.Ext("file.txt")        // .txt
+filepath.Ext("file.tar.gz")     // .gz
+
+// 分割目录和文件名
+dir, file := filepath.Split("/a/b/c.txt")  // "/a/b/", "c.txt"
+
+// 分割扩展名
+name := "file.txt"
+ext := filepath.Ext(name)                   // .txt
+nameWithoutExt := name[:len(name)-len(ext)] // file
+
+// ==================== 绝对路径与相对路径 ====================
+absPath, _ := filepath.Abs("relative")       // 绝对路径
+relPath, _ := filepath.Rel("/a/b", "/a/b/c/d")  // c/d
+relPath, _ := filepath.Rel("/a/b/c", "/a/d/e")  // ../../d/e
+
+filepath.IsAbs("/root")    // true
+filepath.IsAbs("relative") // false
+
+// ==================== 规范化 ====================
+filepath.Clean("/a/b/../c/./d")   // /a/c/d
+filepath.Clean("a//b//c")         // a/b/c
+
+// 解析符号链接
+realPath, _ := filepath.EvalSymlinks("/path/to/symlink")
+
+// ==================== 路径匹配 ====================
+matched, _ := filepath.Match("*.txt", "file.txt")     // true
+matched, _ := filepath.Match("dir/*/*.go", "dir/sub/main.go")  // true
+
+// Glob
+files, _ := filepath.Glob("*.go")
+files, _ := filepath.Glob("**/*.go")  // 注意: 不递归！
+
+// 递归遍历
+filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+    if err != nil {
+        return err
+    }
+    if filepath.Ext(path) == ".go" {
+        fmt.Println(path)
+    }
+    return nil
+})
+
+// ==================== 卷和根 (Windows) ====================
+filepath.VolumeName("C:\\a\\b")  // "C:" (Windows)
+filepath.VolumeName("/a/b")      // "" (Unix)
+
+// ==================== 常用模式 ====================
+// 获取可执行文件目录
+func execDir() string {
+    exe, _ := os.Executable()
+    return filepath.Dir(exe)
+}
+
+// 安全路径拼接
+func safePath(base, userInput string) (string, error) {
+    // 清理用户输入
+    cleaned := filepath.Clean(userInput)
+    
+    // 检查是否包含 ..
+    if strings.Contains(cleaned, "..") {
+        return "", errors.New("invalid path")
+    }
+    
+    // 拼接并确保在基目录内
+    result := filepath.Join(base, cleaned)
+    absBase, _ := filepath.Abs(base)
+    absResult, _ := filepath.Abs(result)
+    
+    if !strings.HasPrefix(absResult, absBase) {
+        return "", errors.New("path escape")
+    }
+    
+    return result, nil
+}
+
+// 确保扩展名
+func ensureExt(path, ext string) string {
+    if filepath.Ext(path) != ext {
+        return path + ext
+    }
+    return path
+}
+```
+
+#### Rust 路径操作
+
+```rust
+use std::path::{Path, PathBuf, Component};
+use std::ffi::OsStr;
+
+// ==================== 创建路径 ====================
+let p = Path::new("dir/subdir/file.txt");    // 借用
+let p = PathBuf::from("dir/subdir/file.txt"); // 所有权
+
+// 拼接
+let p = Path::new("dir").join("subdir").join("file.txt");
+let mut p = PathBuf::from("dir");
+p.push("subdir");
+p.push("file.txt");
+
+// ==================== 路径组件 ====================
+let p = Path::new("/home/user/file.txt");
+
+p.parent();           // Some("/home/user")
+p.file_name();        // Some("file.txt")
+p.file_stem();        // Some("file")
+p.extension();        // Some("txt")
+
+// ancestors 迭代器
+for ancestor in p.ancestors() {
+    println!("{:?}", ancestor);
+}
+// /home/user/file.txt
+// /home/user
+// /home
+// /
+
+// components 迭代器
+for comp in p.components() {
+    match comp {
+        Component::RootDir => println!("Root"),
+        Component::Normal(name) => println!("Dir: {:?}", name),
+        _ => {}
+    }
+}
+
+// ==================== 路径修改 ====================
+let p = Path::new("/home/user/file.txt");
+
+p.with_file_name("other.txt");   // /home/user/other.txt
+p.with_extension("md");          // /home/user/file.md
+p.with_extension("");            // /home/user/file
+
+let mut p = PathBuf::from("/home/user/file.txt");
+p.set_file_name("other.txt");
+p.set_extension("md");
+
+// ==================== 绝对路径与规范化 ====================
+use std::fs;
+
+// 规范化并解析符号链接
+let abs = fs::canonicalize("relative/path")?;
+
+// 检查是否绝对路径
+Path::new("/root").is_absolute();    // true
+Path::new("relative").is_absolute(); // false
+
+// 相对路径 (需要 pathdiff crate)
+use pathdiff::diff_paths;
+let rel = diff_paths("/a/b/c/d", "/a/b");  // Some("c/d")
+
+// ==================== 路径匹配 ====================
+// 使用 glob crate
+use glob::glob;
+
+for entry in glob("**/*.rs")? {
+    let path = entry?;
+    println!("{:?}", path);
+}
+
+// 手动匹配
+let p = Path::new("file.txt");
+p.extension() == Some(OsStr::new("txt"));
+
+// ==================== 路径检查 ====================
+let p = Path::new("file.txt");
+
+p.exists();         // 是否存在
+p.is_file();        // 是否是文件
+p.is_dir();         // 是否是目录
+p.is_symlink();     // 是否是符号链接
+p.is_absolute();    // 是否是绝对路径
+p.is_relative();    // 是否是相对路径
+
+// 元数据
+let metadata = p.metadata()?;
+metadata.is_file();
+metadata.is_dir();
+metadata.len();
+
+// ==================== 跨平台注意 ====================
+// Path 和 PathBuf 自动处理平台差异
+// 但字符串转换需要注意
+
+let p = Path::new("/some/path");
+
+// 可能失败 (非 UTF-8)
+let s: Option<&str> = p.to_str();
+
+// 有损转换
+let s: std::borrow::Cow<str> = p.to_string_lossy();
+
+// OsStr 操作
+let os_str: &OsStr = p.as_os_str();
+
+// ==================== 常用模式 ====================
+// 安全路径拼接
+fn safe_join(base: &Path, user_input: &str) -> Option<PathBuf> {
+    let path = base.join(user_input);
+    let canonical = std::fs::canonicalize(&path).ok()?;
+    let base_canonical = std::fs::canonicalize(base).ok()?;
+    
+    if canonical.starts_with(&base_canonical) {
+        Some(canonical)
+    } else {
+        None
+    }
+}
+
+// 确保父目录存在
+fn ensure_parent(path: &Path) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
+}
+
+// 唯一文件名
+fn unique_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+    
+    let stem = path.file_stem().unwrap_or_default();
+    let ext = path.extension();
+    let parent = path.parent().unwrap_or(Path::new(""));
+    
+    let mut counter = 1;
+    loop {
+        let new_name = match ext {
+            Some(e) => format!("{}_{}.{}", stem.to_string_lossy(), counter, e.to_string_lossy()),
+            None => format!("{}_{}", stem.to_string_lossy(), counter),
+        };
+        let new_path = parent.join(new_name);
+        if !new_path.exists() {
+            return new_path;
+        }
+        counter += 1;
+    }
+}
+```
+
+### 路径操作对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 拼接            │ path.join()          │ Path() / "x"         │ filepath.Join()      │ path.join()          │
+│ 父目录          │ path.dirname()       │ .parent              │ filepath.Dir()       │ .parent()            │
+│ 文件名          │ path.basename()      │ .name                │ filepath.Base()      │ .file_name()         │
+│ 无扩展名        │ 手动处理             │ .stem                │ 手动处理             │ .file_stem()         │
+│ 扩展名          │ path.extname()       │ .suffix              │ filepath.Ext()       │ .extension()         │
+│ 改扩展名        │ 手动处理             │ .with_suffix()       │ 手动处理             │ .with_extension()    │
+│ 绝对路径        │ path.resolve()       │ .resolve()           │ filepath.Abs()       │ fs::canonicalize()   │
+│ 相对路径        │ path.relative()      │ .relative_to()       │ filepath.Rel()       │ pathdiff             │
+│ 是否绝对        │ path.isAbsolute()    │ .is_absolute()       │ filepath.IsAbs()     │ .is_absolute()       │
+│ 规范化          │ path.normalize()     │ .resolve()           │ filepath.Clean()     │ fs::canonicalize()   │
+│ Glob            │ glob 库              │ .glob() / .rglob()   │ filepath.Glob()      │ glob crate           │
+│ 遍历            │ fs.readdir           │ .iterdir()           │ filepath.WalkDir     │ walkdir crate        │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 路径安全最佳实践
+
+| 风险 | 说明 | 防御 |
+|------|------|------|
+| **目录遍历** | 用户输入 `../../../etc/passwd` | 规范化后检查是否在基目录内 |
+| **空字节注入** | 路径中包含 `\0` | 验证输入不含空字节 |
+| **符号链接** | 符号链接指向敏感文件 | 使用 `canonicalize` 解析真实路径 |
+| **路径过长** | 超过系统限制 | 检查路径长度 |
+| **特殊字符** | Windows 保留名如 `CON`, `NUL` | 过滤或拒绝 |
+
+---
+
 ## 🌐 HTTP 客户端 (Fetch)
 
 ### HTTP 客户端概览
@@ -9744,6 +14737,714 @@ impl UserService for MyUserService {
         }))
     }
 }
+```
+
+### Web 框架详细对比 (Koa vs FastAPI vs Gin vs Axum)
+
+#### 路由参数 (Path Parameters)
+
+```typescript
+// ==================== Koa (koa-router) ====================
+import Router from '@koa/router';
+const router = new Router();
+
+router.get('/users/:id', async (ctx) => {
+    const id = ctx.params.id;
+    ctx.body = { id };
+});
+
+router.get('/posts/:year/:month', async (ctx) => {
+    const { year, month } = ctx.params;
+    ctx.body = { year, month };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import FastAPI, Path
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: int):  # 自动类型转换
+    return {"user_id": user_id}
+
+@app.get("/posts/{year}/{month}")
+async def get_posts(
+    year: int = Path(..., ge=2000, le=2100),  # 验证
+    month: int = Path(..., ge=1, le=12)
+):
+    return {"year": year, "month": month}
+```
+
+```go
+// ==================== Gin ====================
+r := gin.Default()
+
+r.GET("/users/:id", func(c *gin.Context) {
+    id := c.Param("id")
+    c.JSON(200, gin.H{"id": id})
+})
+
+r.GET("/posts/:year/:month", func(c *gin.Context) {
+    year := c.Param("year")
+    month := c.Param("month")
+    c.JSON(200, gin.H{"year": year, "month": month})
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{extract::Path, routing::get, Router};
+
+async fn get_user(Path(id): Path<u32>) -> String {
+    format!("User {}", id)
+}
+
+async fn get_posts(Path((year, month)): Path<(u32, u32)>) -> String {
+    format!("{}/{}", year, month)
+}
+
+let app = Router::new()
+    .route("/users/:id", get(get_user))
+    .route("/posts/:year/:month", get(get_posts));
+```
+
+#### 查询参数 (Query Parameters)
+
+```typescript
+// ==================== Koa ====================
+router.get('/search', async (ctx) => {
+    const { q, page = '1', limit = '10' } = ctx.query;
+    ctx.body = { q, page: parseInt(page), limit: parseInt(limit) };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Query
+from typing import Optional
+
+@app.get("/search")
+async def search(
+    q: str,                                    # 必填
+    page: int = 1,                            # 默认值
+    limit: int = Query(10, ge=1, le=100),     # 带验证
+    tags: Optional[list[str]] = Query(None)   # 可选列表
+):
+    return {"q": q, "page": page, "limit": limit, "tags": tags}
+```
+
+```go
+// ==================== Gin ====================
+type SearchQuery struct {
+    Q     string   `form:"q" binding:"required"`
+    Page  int      `form:"page,default=1"`
+    Limit int      `form:"limit,default=10"`
+    Tags  []string `form:"tags"`
+}
+
+r.GET("/search", func(c *gin.Context) {
+    var query SearchQuery
+    if err := c.ShouldBindQuery(&query); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(200, query)
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::extract::Query;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+    #[serde(default = "default_page")]
+    page: u32,
+    #[serde(default = "default_limit")]
+    limit: u32,
+}
+
+fn default_page() -> u32 { 1 }
+fn default_limit() -> u32 { 10 }
+
+async fn search(Query(query): Query<SearchQuery>) -> String {
+    format!("Search: {} page {}", query.q, query.page)
+}
+```
+
+#### 请求头 (Headers)
+
+```typescript
+// ==================== Koa ====================
+router.get('/api', async (ctx) => {
+    const auth = ctx.get('Authorization');
+    const contentType = ctx.get('Content-Type');
+    const userAgent = ctx.request.headers['user-agent'];
+    
+    ctx.set('X-Custom-Header', 'value');
+    ctx.body = { auth };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Header
+
+@app.get("/api")
+async def api(
+    authorization: str = Header(...),
+    user_agent: str = Header(None, alias="User-Agent"),
+    x_token: list[str] = Header(None)
+):
+    return {"auth": authorization}
+
+# 响应头
+from fastapi import Response
+
+@app.get("/download")
+async def download(response: Response):
+    response.headers["X-Custom"] = "value"
+    return {"file": "data"}
+```
+
+```go
+// ==================== Gin ====================
+r.GET("/api", func(c *gin.Context) {
+    auth := c.GetHeader("Authorization")
+    userAgent := c.Request.Header.Get("User-Agent")
+    
+    c.Header("X-Custom-Header", "value")
+    c.JSON(200, gin.H{"auth": auth})
+})
+
+// 绑定到结构体
+type Headers struct {
+    Authorization string `header:"Authorization" binding:"required"`
+    UserAgent     string `header:"User-Agent"`
+}
+
+r.GET("/api", func(c *gin.Context) {
+    var h Headers
+    c.ShouldBindHeader(&h)
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::http::{HeaderMap, header};
+use axum_extra::TypedHeader;
+use headers::Authorization;
+
+async fn api(
+    TypedHeader(auth): TypedHeader<Authorization<headers::authorization::Bearer>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let user_agent = headers.get(header::USER_AGENT);
+    
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        format!("Token: {}", auth.token())
+    )
+}
+```
+
+#### 请求体 (Body)
+
+```typescript
+// ==================== Koa (koa-bodyparser) ====================
+import bodyParser from 'koa-bodyparser';
+app.use(bodyParser());
+
+router.post('/users', async (ctx) => {
+    const body = ctx.request.body;  // JSON 自动解析
+    ctx.body = body;
+});
+
+// 文件上传 (koa-multer)
+import multer from '@koa/multer';
+const upload = multer({ dest: 'uploads/' });
+
+router.post('/upload', upload.single('file'), async (ctx) => {
+    const file = ctx.request.file;
+    ctx.body = { filename: file.filename };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from pydantic import BaseModel, Field
+
+class CreateUser(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: str
+    age: int = Field(None, ge=0, le=150)
+
+@app.post("/users")
+async def create_user(user: CreateUser):  # 自动验证
+    return user
+
+# 原始 body
+from fastapi import Body
+
+@app.post("/raw")
+async def raw_body(data: dict = Body(...)):
+    return data
+
+# 文件上传
+from fastapi import File, UploadFile
+
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    content = await file.read()
+    return {"filename": file.filename, "size": len(content)}
+```
+
+```go
+// ==================== Gin ====================
+type CreateUser struct {
+    Name  string `json:"name" binding:"required,min=1,max=100"`
+    Email string `json:"email" binding:"required,email"`
+    Age   int    `json:"age" binding:"gte=0,lte=150"`
+}
+
+r.POST("/users", func(c *gin.Context) {
+    var user CreateUser
+    if err := c.ShouldBindJSON(&user); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(201, user)
+})
+
+// 文件上传
+r.POST("/upload", func(c *gin.Context) {
+    file, _ := c.FormFile("file")
+    c.SaveUploadedFile(file, "uploads/"+file.Filename)
+    c.JSON(200, gin.H{"filename": file.Filename})
+})
+
+// 多文件
+r.POST("/uploads", func(c *gin.Context) {
+    form, _ := c.MultipartForm()
+    files := form.File["files"]
+    for _, file := range files {
+        c.SaveUploadedFile(file, "uploads/"+file.Filename)
+    }
+})
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{Json, extract::Multipart};
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+struct CreateUser {
+    name: String,
+    email: String,
+    age: Option<u32>,
+}
+
+async fn create_user(Json(user): Json<CreateUser>) -> Json<CreateUser> {
+    Json(user)
+}
+
+// 文件上传
+async fn upload(mut multipart: Multipart) -> String {
+    while let Some(field) = multipart.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+        println!("Field: {} Size: {}", name, data.len());
+    }
+    "OK".to_string()
+}
+```
+
+#### 应用状态 (State)
+
+```typescript
+// ==================== Koa ====================
+// 方式1: app.context
+app.context.db = database;
+
+router.get('/users', async (ctx) => {
+    const users = await ctx.db.getUsers();
+    ctx.body = users;
+});
+
+// 方式2: 中间件注入
+app.use(async (ctx, next) => {
+    ctx.state.db = database;
+    ctx.state.config = config;
+    await next();
+});
+
+router.get('/users', async (ctx) => {
+    const users = await ctx.state.db.getUsers();
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Depends
+
+# 依赖注入
+def get_db():
+    db = Database()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.get("/users")
+async def get_users(db: Database = Depends(get_db)):
+    return await db.get_users()
+
+# app.state
+app.state.config = Config()
+
+@app.get("/config")
+async def get_config(request: Request):
+    return request.app.state.config
+```
+
+```go
+// ==================== Gin ====================
+// 方式1: 中间件
+func DatabaseMiddleware(db *Database) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Set("db", db)
+        c.Next()
+    }
+}
+
+r.Use(DatabaseMiddleware(db))
+
+r.GET("/users", func(c *gin.Context) {
+    db := c.MustGet("db").(*Database)
+    users := db.GetUsers()
+    c.JSON(200, users)
+})
+
+// 方式2: 闭包
+func SetupRoutes(db *Database) *gin.Engine {
+    r := gin.Default()
+    
+    r.GET("/users", func(c *gin.Context) {
+        users := db.GetUsers()  // 直接使用
+        c.JSON(200, users)
+    })
+    
+    return r
+}
+```
+
+```rust
+// ==================== Axum ====================
+use axum::extract::State;
+use std::sync::Arc;
+
+struct AppState {
+    db: Database,
+    config: Config,
+}
+
+async fn get_users(State(state): State<Arc<AppState>>) -> Json<Vec<User>> {
+    let users = state.db.get_users().await;
+    Json(users)
+}
+
+let state = Arc::new(AppState { db, config });
+let app = Router::new()
+    .route("/users", get(get_users))
+    .with_state(state);
+```
+
+#### 路由分组 (Router Groups)
+
+```typescript
+// ==================== Koa ====================
+const apiRouter = new Router({ prefix: '/api/v1' });
+const adminRouter = new Router({ prefix: '/admin' });
+
+apiRouter.get('/users', getUsers);
+apiRouter.post('/users', createUser);
+
+adminRouter.get('/stats', getStats);
+adminRouter.use(authMiddleware);  // 组级中间件
+
+app.use(apiRouter.routes());
+app.use(adminRouter.routes());
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import APIRouter
+
+# 创建路由组
+users_router = APIRouter(prefix="/users", tags=["users"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
+
+@users_router.get("/")
+async def list_users():
+    return []
+
+@users_router.get("/{id}")
+async def get_user(id: int):
+    return {"id": id}
+
+@admin_router.get("/stats")
+async def stats():
+    return {"count": 100}
+
+# 注册路由组
+app.include_router(users_router, prefix="/api/v1")
+app.include_router(admin_router, dependencies=[Depends(auth)])
+```
+
+```go
+// ==================== Gin ====================
+r := gin.Default()
+
+// API v1 组
+v1 := r.Group("/api/v1")
+{
+    v1.GET("/users", listUsers)
+    v1.POST("/users", createUser)
+    
+    // 嵌套组
+    users := v1.Group("/users")
+    {
+        users.GET("/:id", getUser)
+        users.PUT("/:id", updateUser)
+        users.DELETE("/:id", deleteUser)
+    }
+}
+
+// Admin 组 (带中间件)
+admin := r.Group("/admin")
+admin.Use(AuthMiddleware())
+{
+    admin.GET("/stats", getStats)
+    admin.GET("/users", adminListUsers)
+}
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{routing::{get, post}, Router};
+
+// 子路由
+fn users_routes() -> Router<AppState> {
+    Router::new()
+        .route("/", get(list_users).post(create_user))
+        .route("/:id", get(get_user).put(update_user).delete(delete_user))
+}
+
+fn admin_routes() -> Router<AppState> {
+    Router::new()
+        .route("/stats", get(stats))
+        .layer(middleware::from_fn(auth_middleware))
+}
+
+let app = Router::new()
+    .nest("/api/v1/users", users_routes())
+    .nest("/admin", admin_routes())
+    .with_state(state);
+```
+
+#### 中间件 (Middleware)
+
+```typescript
+// ==================== Koa ====================
+// 日志中间件
+app.use(async (ctx, next) => {
+    const start = Date.now();
+    await next();
+    const ms = Date.now() - start;
+    console.log(`${ctx.method} ${ctx.url} - ${ms}ms`);
+});
+
+// 错误处理
+app.use(async (ctx, next) => {
+    try {
+        await next();
+    } catch (err) {
+        ctx.status = err.status || 500;
+        ctx.body = { error: err.message };
+    }
+});
+
+// 认证中间件
+const auth = async (ctx, next) => {
+    const token = ctx.get('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+        ctx.throw(401, 'Unauthorized');
+    }
+    ctx.state.user = await verifyToken(token);
+    await next();
+};
+
+router.get('/protected', auth, async (ctx) => {
+    ctx.body = { user: ctx.state.user };
+});
+```
+
+```python
+# ==================== FastAPI ====================
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+import time
+
+# 自定义中间件
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        duration = time.time() - start
+        response.headers["X-Process-Time"] = str(duration)
+        return response
+
+app.add_middleware(TimingMiddleware)
+
+# CORS 中间件
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 依赖作为中间件
+async def verify_token(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Invalid token")
+    return decode_token(authorization[7:])
+
+@app.get("/protected")
+async def protected(user: User = Depends(verify_token)):
+    return {"user": user}
+```
+
+```go
+// ==================== Gin ====================
+// 日志中间件
+func Logger() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        start := time.Now()
+        
+        c.Next()  // 处理请求
+        
+        latency := time.Since(start)
+        status := c.Writer.Status()
+        log.Printf("%s %s %d %v", c.Request.Method, c.Request.URL, status, latency)
+    }
+}
+
+// 错误恢复
+func Recovery() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        defer func() {
+            if err := recover(); err != nil {
+                c.JSON(500, gin.H{"error": "Internal Server Error"})
+                c.Abort()
+            }
+        }()
+        c.Next()
+    }
+}
+
+// 认证中间件
+func Auth() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        token := c.GetHeader("Authorization")
+        if token == "" {
+            c.JSON(401, gin.H{"error": "Unauthorized"})
+            c.Abort()
+            return
+        }
+        user, err := verifyToken(token)
+        if err != nil {
+            c.JSON(401, gin.H{"error": "Invalid token"})
+            c.Abort()
+            return
+        }
+        c.Set("user", user)
+        c.Next()
+    }
+}
+
+r.Use(Logger(), Recovery())
+r.GET("/protected", Auth(), protectedHandler)
+```
+
+```rust
+// ==================== Axum ====================
+use axum::{
+    middleware::{self, Next},
+    response::Response,
+    http::Request,
+};
+use std::time::Instant;
+
+// 日志中间件
+async fn logging<B>(req: Request<B>, next: Next<B>) -> Response {
+    let start = Instant::now();
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    
+    let response = next.run(req).await;
+    
+    let duration = start.elapsed();
+    println!("{} {} - {:?}", method, uri, duration);
+    
+    response
+}
+
+// 认证中间件
+async fn auth<B>(
+    mut req: Request<B>,
+    next: Next<B>,
+) -> Result<Response, StatusCode> {
+    let token = req.headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    
+    let user = verify_token(token)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    
+    req.extensions_mut().insert(user);
+    Ok(next.run(req).await)
+}
+
+let app = Router::new()
+    .route("/protected", get(protected))
+    .layer(middleware::from_fn(auth))
+    .layer(middleware::from_fn(logging));
+```
+
+### Web 框架对比表
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 功能            │ Koa                  │ FastAPI              │ Gin                  │ Axum                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 路由参数        │ ctx.params           │ 函数参数             │ c.Param              │ Path extractor       │
+│ 查询参数        │ ctx.query            │ Query                │ c.ShouldBindQuery    │ Query extractor      │
+│ 请求头          │ ctx.get()            │ Header               │ c.GetHeader          │ TypedHeader          │
+│ 请求体          │ ctx.request.body     │ BaseModel            │ c.ShouldBindJSON     │ Json extractor       │
+│ 应用状态        │ ctx.state            │ Depends / app.state  │ c.Set / c.Get        │ State extractor      │
+│ 路由分组        │ Router prefix        │ APIRouter            │ r.Group              │ Router::nest         │
+│ 中间件          │ app.use(fn)          │ add_middleware       │ r.Use                │ .layer               │
+│ 验证            │ 第三方库             │ Pydantic             │ binding tag          │ validator crate      │
+│ 自动文档        │ ❌                   │ ✅ OpenAPI           │ swag                 │ utoipa               │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
 ```
 
 ---
@@ -11845,6 +17546,3036 @@ crossbeam::select! {
 | Actor | 独立状态的消息处理单元 | Rust (actix) |
 | CSP | 通过通信共享内存 | Go (原生) |
 
+### 并发控制模式 (All/Race/Timeout/Semaphore/Bucket-Limit)
+
+#### All - 等待所有完成
+
+**TypeScript**
+```typescript
+// ==================== Promise.all ====================
+// 等待所有 Promise 完成，任一失败则整体失败
+const results = await Promise.all([
+    fetch('/api/users'),
+    fetch('/api/posts'),
+    fetch('/api/comments')
+]);
+
+// Promise.allSettled - 等待所有完成，不管成功失败
+const settled = await Promise.allSettled([
+    fetch('/api/users'),
+    fetch('/api/might-fail'),
+    fetch('/api/posts')
+]);
+// 结果: [{ status: 'fulfilled', value }, { status: 'rejected', reason }, ...]
+
+// 带类型的 Promise.all
+async function fetchAll<T>(urls: string[]): Promise<T[]> {
+    return Promise.all(urls.map(url => fetch(url).then(r => r.json())));
+}
+
+// 并发限制的 all
+async function allWithLimit<T>(
+    tasks: (() => Promise<T>)[],
+    limit: number
+): Promise<T[]> {
+    const results: T[] = [];
+    const executing: Promise<void>[] = [];
+    
+    for (const task of tasks) {
+        const p = task().then(result => {
+            results.push(result);
+        });
+        executing.push(p);
+        
+        if (executing.length >= limit) {
+            await Promise.race(executing);
+            executing.splice(executing.findIndex(e => e === p), 1);
+        }
+    }
+    await Promise.all(executing);
+    return results;
+}
+```
+
+**Python**
+```python
+import asyncio
+from typing import List, Any, Coroutine
+
+# ==================== asyncio.gather ====================
+# 等待所有协程完成
+async def fetch_all():
+    results = await asyncio.gather(
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments()
+    )
+    return results
+
+# return_exceptions=True 类似 allSettled
+async def fetch_all_settled():
+    results = await asyncio.gather(
+        fetch_users(),
+        might_fail(),
+        fetch_posts(),
+        return_exceptions=True  # 异常作为结果返回，不抛出
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            print(f"Failed: {r}")
+        else:
+            print(f"Success: {r}")
+
+# 使用 TaskGroup (Python 3.11+)
+async def fetch_with_taskgroup():
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(fetch_users())
+        task2 = tg.create_task(fetch_posts())
+        task3 = tg.create_task(fetch_comments())
+    # 所有任务完成后继续
+    return task1.result(), task2.result(), task3.result()
+
+# 带并发限制
+async def gather_with_limit(coros: List[Coroutine], limit: int):
+    semaphore = asyncio.Semaphore(limit)
+    
+    async def limited_coro(coro):
+        async with semaphore:
+            return await coro
+    
+    return await asyncio.gather(*[limited_coro(c) for c in coros])
+```
+
+**Go**
+```go
+// ==================== WaitGroup - 等待所有完成 ====================
+import (
+    "sync"
+    "golang.org/x/sync/errgroup"
+)
+
+// 基础 WaitGroup
+func fetchAll() {
+    var wg sync.WaitGroup
+    results := make([]string, 3)
+    
+    urls := []string{"/api/users", "/api/posts", "/api/comments"}
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()  // 等待所有完成
+    fmt.Println(results)
+}
+
+// errgroup - 带错误处理的等待组
+func fetchAllWithError() error {
+    g, ctx := errgroup.WithContext(context.Background())
+    
+    var users, posts, comments string
+    
+    g.Go(func() error {
+        var err error
+        users, err = fetchWithCtx(ctx, "/api/users")
+        return err
+    })
+    
+    g.Go(func() error {
+        var err error
+        posts, err = fetchWithCtx(ctx, "/api/posts")
+        return err
+    })
+    
+    g.Go(func() error {
+        var err error
+        comments, err = fetchWithCtx(ctx, "/api/comments")
+        return err
+    })
+    
+    if err := g.Wait(); err != nil {
+        return err  // 任一失败返回错误
+    }
+    
+    fmt.Println(users, posts, comments)
+    return nil
+}
+
+// 带并发限制的 errgroup
+func fetchAllLimited() error {
+    g, ctx := errgroup.WithContext(context.Background())
+    g.SetLimit(3)  // 最多 3 个并发
+    
+    urls := []string{...}
+    results := make([]string, len(urls))
+    
+    for i, url := range urls {
+        i, url := i, url
+        g.Go(func() error {
+            result, err := fetchWithCtx(ctx, url)
+            if err != nil {
+                return err
+            }
+            results[i] = result
+            return nil
+        })
+    }
+    
+    return g.Wait()
+}
+```
+
+**Rust**
+```rust
+use futures::future::{join_all, try_join_all};
+use tokio::task::JoinSet;
+
+// ==================== join_all - 等待所有完成 ====================
+async fn fetch_all() -> Vec<String> {
+    let futures = vec![
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments(),
+    ];
+    
+    // join_all 等待所有完成
+    join_all(futures).await
+}
+
+// try_join_all - 任一失败则返回错误
+async fn fetch_all_or_fail() -> Result<Vec<String>, Error> {
+    let futures = vec![
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments(),
+    ];
+    
+    try_join_all(futures).await
+}
+
+// tokio::join! 宏 - 固定数量的 futures
+async fn fetch_multiple() {
+    let (users, posts, comments) = tokio::join!(
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments()
+    );
+}
+
+// try_join! 宏 - 带错误处理
+async fn fetch_multiple_or_fail() -> Result<(), Error> {
+    let (users, posts, comments) = tokio::try_join!(
+        fetch_users(),
+        fetch_posts(),
+        fetch_comments()
+    )?;
+    Ok(())
+}
+
+// JoinSet - 动态任务管理
+async fn fetch_dynamic(urls: Vec<String>) -> Vec<String> {
+    let mut set = JoinSet::new();
+    
+    for url in urls {
+        set.spawn(async move {
+            fetch(&url).await
+        });
+    }
+    
+    let mut results = Vec::new();
+    while let Some(res) = set.join_next().await {
+        if let Ok(value) = res {
+            results.push(value);
+        }
+    }
+    results
+}
+```
+
+#### Race - 返回最快的结果
+
+**TypeScript**
+```typescript
+// ==================== Promise.race ====================
+// 返回第一个完成的（成功或失败）
+const fastest = await Promise.race([
+    fetch('/api/server1/data'),
+    fetch('/api/server2/data'),
+    fetch('/api/server3/data')
+]);
+
+// Promise.any - 返回第一个成功的（忽略失败）
+const firstSuccess = await Promise.any([
+    fetch('/api/primary'),
+    fetch('/api/backup1'),
+    fetch('/api/backup2')
+]);
+// 全部失败才抛出 AggregateError
+
+// 实现带超时的 race
+function raceWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout')), ms);
+    });
+    return Promise.race([promise, timeout]);
+}
+
+// 多服务器竞速获取
+async function fetchFromFastestServer<T>(urls: string[]): Promise<T> {
+    const controller = new AbortController();
+    
+    try {
+        const result = await Promise.any(
+            urls.map(url => 
+                fetch(url, { signal: controller.signal })
+                    .then(r => r.json())
+            )
+        );
+        return result;
+    } finally {
+        controller.abort();  // 取消其他请求
+    }
+}
+```
+
+**Python**
+```python
+import asyncio
+
+# ==================== asyncio.wait - FIRST_COMPLETED ====================
+async def race_tasks():
+    tasks = [
+        asyncio.create_task(fetch_from_server1()),
+        asyncio.create_task(fetch_from_server2()),
+        asyncio.create_task(fetch_from_server3()),
+    ]
+    
+    # 等待第一个完成
+    done, pending = await asyncio.wait(
+        tasks,
+        return_when=asyncio.FIRST_COMPLETED
+    )
+    
+    # 取消其他任务
+    for task in pending:
+        task.cancel()
+    
+    # 获取结果
+    return done.pop().result()
+
+# 类似 Promise.any - 返回第一个成功的
+async def first_success(coros):
+    tasks = [asyncio.create_task(c) for c in coros]
+    
+    while tasks:
+        done, tasks = await asyncio.wait(
+            tasks,
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        for task in done:
+            if not task.exception():
+                # 取消剩余任务
+                for t in tasks:
+                    t.cancel()
+                return task.result()
+    
+    raise Exception("All tasks failed")
+
+# 使用 asyncio.wait_for 实现 race with timeout
+async def race_with_timeout(coros, timeout):
+    tasks = [asyncio.create_task(c) for c in coros]
+    try:
+        done, pending = await asyncio.wait(
+            tasks,
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        if done:
+            return done.pop().result()
+        raise asyncio.TimeoutError()
+    finally:
+        for task in pending:
+            task.cancel()
+```
+
+**Go**
+```go
+// ==================== select - 竞速选择 ====================
+func raceRequests(ctx context.Context) (string, error) {
+    ch := make(chan string, 3)
+    errCh := make(chan error, 3)
+    
+    // 启动多个请求
+    go func() {
+        result, err := fetchFromServer1(ctx)
+        if err != nil {
+            errCh <- err
+            return
+        }
+        ch <- result
+    }()
+    
+    go func() {
+        result, err := fetchFromServer2(ctx)
+        if err != nil {
+            errCh <- err
+            return
+        }
+        ch <- result
+    }()
+    
+    // 等待第一个结果
+    select {
+    case result := <-ch:
+        return result, nil
+    case err := <-errCh:
+        return "", err
+    case <-ctx.Done():
+        return "", ctx.Err()
+    }
+}
+
+// 使用 context 取消剩余请求
+func raceFetch(urls []string) (string, error) {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()  // 第一个完成后取消其他
+    
+    ch := make(chan string, len(urls))
+    
+    for _, url := range urls {
+        url := url
+        go func() {
+            if result, err := fetchWithCtx(ctx, url); err == nil {
+                select {
+                case ch <- result:
+                default:
+                }
+            }
+        }()
+    }
+    
+    select {
+    case result := <-ch:
+        return result, nil
+    case <-time.After(10 * time.Second):
+        return "", errors.New("all requests timed out")
+    }
+}
+```
+
+**Rust**
+```rust
+use tokio::select;
+use futures::future::select_all;
+
+// ==================== select! 宏 - 竞速 ====================
+async fn race_requests() -> Result<String, Error> {
+    select! {
+        result = fetch_from_server1() => result,
+        result = fetch_from_server2() => result,
+        result = fetch_from_server3() => result,
+    }
+}
+
+// select_all - 动态数量的 futures 竞速
+async fn race_dynamic(urls: Vec<String>) -> String {
+    let futures: Vec<_> = urls
+        .into_iter()
+        .map(|url| Box::pin(fetch(&url)))
+        .collect();
+    
+    let (result, _index, _remaining) = select_all(futures).await;
+    result
+}
+
+// 带取消的竞速
+async fn race_with_cancel(urls: Vec<String>) -> Result<String, Error> {
+    let token = CancellationToken::new();
+    let mut set = JoinSet::new();
+    
+    for url in urls {
+        let token = token.clone();
+        set.spawn(async move {
+            select! {
+                result = fetch(&url) => result,
+                _ = token.cancelled() => Err(Error::Cancelled),
+            }
+        });
+    }
+    
+    if let Some(Ok(Ok(result))) = set.join_next().await {
+        token.cancel();  // 取消其他任务
+        return Ok(result);
+    }
+    
+    Err(Error::AllFailed)
+}
+```
+
+#### Timeout - 超时控制
+
+**TypeScript**
+```typescript
+// ==================== 超时控制 ====================
+// 基础超时封装
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`Timeout after ${ms}ms`));
+        }, ms);
+        
+        promise
+            .then(resolve)
+            .catch(reject)
+            .finally(() => clearTimeout(timer));
+    });
+}
+
+// 使用 AbortController 实现可取消超时
+async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ms);
+    
+    try {
+        return await fetch(url, { signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+// AbortSignal.timeout (现代浏览器)
+async function fetchModern(url: string): Promise<Response> {
+    return fetch(url, { signal: AbortSignal.timeout(5000) });
+}
+
+// 重试 + 超时
+async function fetchWithRetry(
+    url: string,
+    options: { timeout: number; retries: number }
+): Promise<Response> {
+    for (let i = 0; i < options.retries; i++) {
+        try {
+            return await fetchWithTimeout(url, options.timeout);
+        } catch (err) {
+            if (i === options.retries - 1) throw err;
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));  // 退避
+        }
+    }
+    throw new Error('Unreachable');
+}
+```
+
+**Python**
+```python
+import asyncio
+from contextlib import asynccontextmanager
+
+# ==================== asyncio.timeout (Python 3.11+) ====================
+async def fetch_with_timeout():
+    async with asyncio.timeout(5.0):  # 5秒超时
+        return await fetch_data()
+
+# asyncio.wait_for (兼容旧版本)
+async def fetch_with_wait_for():
+    try:
+        result = await asyncio.wait_for(fetch_data(), timeout=5.0)
+        return result
+    except asyncio.TimeoutError:
+        print("Request timed out")
+        raise
+
+# 自定义超时上下文管理器
+@asynccontextmanager
+async def timeout_context(seconds: float):
+    task = asyncio.current_task()
+    loop = asyncio.get_running_loop()
+    
+    def cancel_task():
+        task.cancel()
+    
+    handle = loop.call_later(seconds, cancel_task)
+    try:
+        yield
+    finally:
+        handle.cancel()
+
+# 使用
+async def example():
+    async with timeout_context(5.0):
+        await long_running_operation()
+
+# 带重试的超时
+async def fetch_with_retry(url: str, timeout: float, retries: int):
+    for i in range(retries):
+        try:
+            async with asyncio.timeout(timeout):
+                return await fetch(url)
+        except asyncio.TimeoutError:
+            if i == retries - 1:
+                raise
+            await asyncio.sleep(1.0 * (i + 1))  # 指数退避
+```
+
+**Go**
+```go
+import (
+    "context"
+    "time"
+)
+
+// ==================== context.WithTimeout ====================
+func fetchWithTimeout(url string) (string, error) {
+    // 创建带超时的 context
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    
+    return fetchWithCtx(ctx, url)
+}
+
+// 在函数中检查超时
+func fetchWithCtx(ctx context.Context, url string) (string, error) {
+    // 创建请求
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return "", err
+    }
+    
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        return "", err  // 超时会返回 context deadline exceeded
+    }
+    defer resp.Body.Close()
+    
+    body, _ := io.ReadAll(resp.Body)
+    return string(body), nil
+}
+
+// select 实现超时
+func fetchWithSelectTimeout(url string) (string, error) {
+    ch := make(chan string, 1)
+    errCh := make(chan error, 1)
+    
+    go func() {
+        result, err := fetch(url)
+        if err != nil {
+            errCh <- err
+            return
+        }
+        ch <- result
+    }()
+    
+    select {
+    case result := <-ch:
+        return result, nil
+    case err := <-errCh:
+        return "", err
+    case <-time.After(5 * time.Second):
+        return "", errors.New("timeout")
+    }
+}
+
+// 带重试的超时
+func fetchWithRetry(url string, timeout time.Duration, retries int) (string, error) {
+    var lastErr error
+    
+    for i := 0; i < retries; i++ {
+        ctx, cancel := context.WithTimeout(context.Background(), timeout)
+        result, err := fetchWithCtx(ctx, url)
+        cancel()
+        
+        if err == nil {
+            return result, nil
+        }
+        
+        lastErr = err
+        time.Sleep(time.Duration(i+1) * time.Second)  // 退避
+    }
+    
+    return "", lastErr
+}
+```
+
+**Rust**
+```rust
+use tokio::time::{timeout, Duration};
+use std::time::Instant;
+
+// ==================== tokio::time::timeout ====================
+async fn fetch_with_timeout(url: &str) -> Result<String, Error> {
+    match timeout(Duration::from_secs(5), fetch(url)).await {
+        Ok(result) => result,
+        Err(_) => Err(Error::Timeout),
+    }
+}
+
+// 使用 select! 实现超时
+async fn fetch_with_select_timeout(url: &str) -> Result<String, Error> {
+    select! {
+        result = fetch(url) => result,
+        _ = tokio::time::sleep(Duration::from_secs(5)) => {
+            Err(Error::Timeout)
+        }
+    }
+}
+
+// 带取消令牌的超时
+async fn fetch_cancellable(url: &str, token: CancellationToken) -> Result<String, Error> {
+    select! {
+        result = fetch(url) => result,
+        _ = token.cancelled() => Err(Error::Cancelled),
+        _ = tokio::time::sleep(Duration::from_secs(5)) => {
+            Err(Error::Timeout)
+        }
+    }
+}
+
+// 带重试的超时
+async fn fetch_with_retry(
+    url: &str,
+    timeout_duration: Duration,
+    retries: u32,
+) -> Result<String, Error> {
+    let mut last_err = Error::Unknown;
+    
+    for i in 0..retries {
+        match timeout(timeout_duration, fetch(url)).await {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(e)) => last_err = e,
+            Err(_) => last_err = Error::Timeout,
+        }
+        
+        tokio::time::sleep(Duration::from_secs((i + 1) as u64)).await;
+    }
+    
+    Err(last_err)
+}
+
+// deadline 而非 duration
+async fn fetch_with_deadline(url: &str) -> Result<String, Error> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    tokio::time::timeout_at(deadline.into(), fetch(url)).await?
+}
+```
+
+#### Cancel - 取消操作
+
+**TypeScript**
+```typescript
+// ==================== AbortController ====================
+// 基础取消
+const controller = new AbortController();
+const { signal } = controller;
+
+// 发起可取消的请求
+fetch('/api/data', { signal })
+    .then(response => response.json())
+    .catch(err => {
+        if (err.name === 'AbortError') {
+            console.log('Request was cancelled');
+        }
+    });
+
+// 取消请求
+controller.abort();
+
+// 带原因的取消
+controller.abort(new Error('User cancelled'));
+
+// ==================== 多请求共享取消 ====================
+class CancellableRequestManager {
+    private controller: AbortController | null = null;
+    
+    async fetch(url: string): Promise<Response> {
+        // 取消之前的请求
+        this.controller?.abort();
+        this.controller = new AbortController();
+        
+        return fetch(url, { signal: this.controller.signal });
+    }
+    
+    cancel(): void {
+        this.controller?.abort();
+        this.controller = null;
+    }
+}
+
+// ==================== 可取消的 Promise ====================
+function cancellablePromise<T>(
+    executor: (signal: AbortSignal) => Promise<T>
+): { promise: Promise<T>; cancel: () => void } {
+    const controller = new AbortController();
+    
+    const promise = executor(controller.signal);
+    
+    return {
+        promise,
+        cancel: () => controller.abort()
+    };
+}
+
+// 使用
+const { promise, cancel } = cancellablePromise(async (signal) => {
+    const response = await fetch('/api/data', { signal });
+    return response.json();
+});
+
+// 需要时取消
+cancel();
+
+// ==================== 链接多个 AbortSignal ====================
+function mergeSignals(...signals: AbortSignal[]): AbortSignal {
+    const controller = new AbortController();
+    
+    for (const signal of signals) {
+        if (signal.aborted) {
+            controller.abort(signal.reason);
+            break;
+        }
+        signal.addEventListener('abort', () => {
+            controller.abort(signal.reason);
+        }, { once: true });
+    }
+    
+    return controller.signal;
+}
+
+// AbortSignal.any (现代浏览器)
+const combined = AbortSignal.any([signal1, signal2, signal3]);
+
+// ==================== 可取消的异步迭代 ====================
+async function* cancellableFetch(
+    urls: string[],
+    signal: AbortSignal
+): AsyncGenerator<Response> {
+    for (const url of urls) {
+        if (signal.aborted) {
+            throw new Error('Cancelled');
+        }
+        yield await fetch(url, { signal });
+    }
+}
+
+// 使用
+const controller = new AbortController();
+for await (const response of cancellableFetch(urls, controller.signal)) {
+    // 处理响应
+    if (shouldStop) {
+        controller.abort();
+        break;
+    }
+}
+```
+
+**Python**
+```python
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Optional
+
+# ==================== asyncio.Task.cancel ====================
+async def cancellable_operation():
+    task = asyncio.create_task(long_running_operation())
+    
+    # 稍后取消
+    await asyncio.sleep(1)
+    task.cancel()
+    
+    try:
+        await task
+    except asyncio.CancelledError:
+        print("Task was cancelled")
+
+# ==================== 处理取消 ====================
+async def graceful_cancel():
+    try:
+        await long_running_operation()
+    except asyncio.CancelledError:
+        # 清理资源
+        await cleanup()
+        raise  # 重新抛出让调用者知道被取消了
+
+# 屏蔽取消（谨慎使用）
+async def unshieldable_operation():
+    try:
+        # 这部分不能被取消
+        await asyncio.shield(critical_operation())
+    except asyncio.CancelledError:
+        print("Outer cancelled, but inner completed")
+        raise
+
+# ==================== 取消令牌模式 ====================
+class CancellationToken:
+    def __init__(self):
+        self._cancelled = False
+        self._event = asyncio.Event()
+    
+    def cancel(self):
+        self._cancelled = True
+        self._event.set()
+    
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancelled
+    
+    async def wait(self):
+        """等待取消"""
+        await self._event.wait()
+    
+    def check(self):
+        """检查是否取消，是则抛出异常"""
+        if self._cancelled:
+            raise asyncio.CancelledError("Operation cancelled")
+
+# 使用取消令牌
+async def long_operation(token: CancellationToken):
+    for i in range(100):
+        token.check()  # 检查点
+        await asyncio.sleep(0.1)
+        # 执行工作...
+
+# ==================== 取消多个任务 ====================
+async def cancel_all_tasks():
+    tasks = [
+        asyncio.create_task(fetch(url))
+        for url in urls
+    ]
+    
+    # 等待第一个完成
+    done, pending = await asyncio.wait(
+        tasks,
+        return_when=asyncio.FIRST_COMPLETED
+    )
+    
+    # 取消其余任务
+    for task in pending:
+        task.cancel()
+    
+    # 等待取消完成
+    await asyncio.gather(*pending, return_exceptions=True)
+    
+    return done.pop().result()
+
+# ==================== TaskGroup 取消 (Python 3.11+) ====================
+async def taskgroup_cancel():
+    try:
+        async with asyncio.TaskGroup() as tg:
+            task1 = tg.create_task(operation1())
+            task2 = tg.create_task(operation2())
+            task3 = tg.create_task(operation3())
+            # 如果任一任务失败，其他都会被取消
+    except* ValueError as eg:
+        print(f"Some tasks failed: {eg.exceptions}")
+
+# ==================== 超时自动取消 ====================
+async def auto_cancel_on_timeout():
+    async with asyncio.timeout(5.0) as cm:
+        await long_operation()
+    
+    if cm.expired():
+        print("Operation was cancelled due to timeout")
+```
+
+**Go**
+```go
+import (
+    "context"
+    "errors"
+)
+
+// ==================== context.WithCancel ====================
+func cancellableOperation() {
+    ctx, cancel := context.WithCancel(context.Background())
+    
+    go func() {
+        // 模拟某个条件触发取消
+        time.Sleep(2 * time.Second)
+        cancel()
+    }()
+    
+    // 执行可取消的操作
+    result, err := fetchWithCtx(ctx, "/api/data")
+    if errors.Is(err, context.Canceled) {
+        fmt.Println("Operation was cancelled")
+    }
+}
+
+// ==================== 检查取消状态 ====================
+func longOperation(ctx context.Context) error {
+    for i := 0; i < 100; i++ {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()  // context.Canceled 或 context.DeadlineExceeded
+        default:
+            // 继续工作
+            time.Sleep(100 * time.Millisecond)
+            doWork(i)
+        }
+    }
+    return nil
+}
+
+// ==================== 传播取消 ====================
+func parentOperation(ctx context.Context) error {
+    // 子操作会继承父的取消信号
+    g, ctx := errgroup.WithContext(ctx)
+    
+    g.Go(func() error {
+        return childOperation1(ctx)
+    })
+    
+    g.Go(func() error {
+        return childOperation2(ctx)
+    })
+    
+    // 任一子操作失败或被取消，其他都会收到取消信号
+    return g.Wait()
+}
+
+// ==================== 带原因的取消 ====================
+func cancelWithCause() {
+    ctx, cancel := context.WithCancelCause(context.Background())
+    
+    go func() {
+        cancel(errors.New("user requested cancellation"))
+    }()
+    
+    <-ctx.Done()
+    
+    // 获取取消原因
+    cause := context.Cause(ctx)
+    fmt.Printf("Cancelled because: %v\n", cause)
+}
+
+// ==================== 优雅关闭模式 ====================
+type Worker struct {
+    ctx    context.Context
+    cancel context.CancelFunc
+    done   chan struct{}
+}
+
+func NewWorker() *Worker {
+    ctx, cancel := context.WithCancel(context.Background())
+    w := &Worker{
+        ctx:    ctx,
+        cancel: cancel,
+        done:   make(chan struct{}),
+    }
+    go w.run()
+    return w
+}
+
+func (w *Worker) run() {
+    defer close(w.done)
+    
+    for {
+        select {
+        case <-w.ctx.Done():
+            // 清理资源
+            w.cleanup()
+            return
+        default:
+            w.doWork()
+        }
+    }
+}
+
+func (w *Worker) Stop() {
+    w.cancel()
+    <-w.done  // 等待完全停止
+}
+
+func (w *Worker) cleanup() {
+    fmt.Println("Cleaning up...")
+}
+
+func (w *Worker) doWork() {
+    // 工作逻辑
+}
+
+// ==================== HTTP 请求取消 ====================
+func cancellableHTTPRequest(ctx context.Context, url string) ([]byte, error) {
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return nil, err
+    }
+    
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        if errors.Is(err, context.Canceled) {
+            return nil, fmt.Errorf("request cancelled: %w", err)
+        }
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    return io.ReadAll(resp.Body)
+}
+
+// ==================== Channel 方式取消 ====================
+func workerWithStopChannel(stop <-chan struct{}) {
+    for {
+        select {
+        case <-stop:
+            fmt.Println("Worker stopped")
+            return
+        default:
+            doWork()
+        }
+    }
+}
+
+// 使用
+func main() {
+    stop := make(chan struct{})
+    go workerWithStopChannel(stop)
+    
+    time.Sleep(5 * time.Second)
+    close(stop)  // 发送停止信号
+}
+```
+
+**Rust**
+```rust
+use tokio::select;
+use tokio_util::sync::CancellationToken;
+use std::sync::Arc;
+
+// ==================== CancellationToken ====================
+async fn cancellable_operation(token: CancellationToken) -> Result<String, Error> {
+    select! {
+        result = fetch_data() => result,
+        _ = token.cancelled() => Err(Error::Cancelled),
+    }
+}
+
+// 使用
+async fn main() {
+    let token = CancellationToken::new();
+    let token_clone = token.clone();
+    
+    // 启动可取消的任务
+    let handle = tokio::spawn(async move {
+        cancellable_operation(token_clone).await
+    });
+    
+    // 稍后取消
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    token.cancel();
+    
+    match handle.await {
+        Ok(Ok(result)) => println!("Got result: {}", result),
+        Ok(Err(Error::Cancelled)) => println!("Operation was cancelled"),
+        _ => println!("Task failed"),
+    }
+}
+
+// ==================== 子令牌（层级取消） ====================
+async fn hierarchical_cancel() {
+    let parent_token = CancellationToken::new();
+    let child_token = parent_token.child_token();
+    
+    // 取消父令牌会同时取消子令牌
+    tokio::spawn({
+        let token = child_token.clone();
+        async move {
+            token.cancelled().await;
+            println!("Child task cancelled");
+        }
+    });
+    
+    parent_token.cancel();  // 子任务也会被取消
+}
+
+// ==================== JoinSet 取消 ====================
+async fn cancel_joinset() {
+    let mut set = tokio::task::JoinSet::new();
+    
+    for i in 0..10 {
+        set.spawn(async move {
+            tokio::time::sleep(Duration::from_secs(i)).await;
+            i
+        });
+    }
+    
+    // 等待第一个完成
+    if let Some(result) = set.join_next().await {
+        println!("First result: {:?}", result);
+    }
+    
+    // 取消剩余所有任务
+    set.abort_all();
+    
+    // 等待所有取消完成
+    while set.join_next().await.is_some() {}
+}
+
+// ==================== tokio::task::abort ====================
+async fn abort_task() {
+    let handle = tokio::spawn(async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            println!("Working...");
+        }
+    });
+    
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    handle.abort();  // 取消任务
+    
+    match handle.await {
+        Ok(_) => println!("Task completed"),
+        Err(e) if e.is_cancelled() => println!("Task was cancelled"),
+        Err(e) => println!("Task failed: {}", e),
+    }
+}
+
+// ==================== 检查点取消 ====================
+async fn long_operation(token: &CancellationToken) -> Result<(), Error> {
+    for i in 0..100 {
+        // 检查点
+        if token.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        
+        // 或者使用 select 在异步点检查
+        select! {
+            _ = async_work(i) => {},
+            _ = token.cancelled() => return Err(Error::Cancelled),
+        }
+    }
+    Ok(())
+}
+
+// ==================== Drop 时自动取消 ====================
+struct CancellableTask {
+    token: CancellationToken,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl CancellableTask {
+    fn new<F>(future: F) -> Self
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+        
+        let handle = tokio::spawn(async move {
+            select! {
+                _ = future => {},
+                _ = token_clone.cancelled() => {},
+            }
+        });
+        
+        Self { token, handle }
+    }
+    
+    fn cancel(&self) {
+        self.token.cancel();
+    }
+}
+
+impl Drop for CancellableTask {
+    fn drop(&mut self) {
+        self.token.cancel();
+    }
+}
+
+// ==================== 优雅关闭 ====================
+async fn graceful_shutdown(token: CancellationToken) {
+    // 等待取消信号
+    token.cancelled().await;
+    
+    println!("Shutdown signal received, cleaning up...");
+    
+    // 执行清理，但设置最大等待时间
+    let cleanup_result = tokio::time::timeout(
+        Duration::from_secs(30),
+        cleanup_resources()
+    ).await;
+    
+    match cleanup_result {
+        Ok(_) => println!("Cleanup completed"),
+        Err(_) => println!("Cleanup timed out, forcing shutdown"),
+    }
+}
+
+// 信号处理
+async fn run_with_shutdown() {
+    let token = CancellationToken::new();
+    
+    // 监听 Ctrl+C
+    let shutdown_token = token.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+        shutdown_token.cancel();
+    });
+    
+    // 运行主逻辑
+    select! {
+        _ = main_loop() => {},
+        _ = token.cancelled() => {
+            println!("Shutting down...");
+        }
+    }
+}
+```
+
+#### Semaphore - 信号量（并发数控制）
+
+**TypeScript**
+```typescript
+// ==================== Semaphore 实现 ====================
+class Semaphore {
+    private permits: number;
+    private queue: (() => void)[] = [];
+    
+    constructor(permits: number) {
+        this.permits = permits;
+    }
+    
+    async acquire(): Promise<void> {
+        if (this.permits > 0) {
+            this.permits--;
+            return;
+        }
+        
+        return new Promise(resolve => {
+            this.queue.push(resolve);
+        });
+    }
+    
+    release(): void {
+        const next = this.queue.shift();
+        if (next) {
+            next();
+        } else {
+            this.permits++;
+        }
+    }
+    
+    async withPermit<T>(fn: () => Promise<T>): Promise<T> {
+        await this.acquire();
+        try {
+            return await fn();
+        } finally {
+            this.release();
+        }
+    }
+}
+
+// 使用 Semaphore 控制并发
+async function fetchAllLimited(urls: string[], limit: number): Promise<string[]> {
+    const semaphore = new Semaphore(limit);
+    
+    return Promise.all(
+        urls.map(url => 
+            semaphore.withPermit(() => fetch(url).then(r => r.text()))
+        )
+    );
+}
+
+// p-limit 库的使用（推荐）
+import pLimit from 'p-limit';
+
+const limit = pLimit(5);  // 最多 5 个并发
+const results = await Promise.all(
+    urls.map(url => limit(() => fetch(url)))
+);
+```
+
+**Python**
+```python
+import asyncio
+from contextlib import asynccontextmanager
+
+# ==================== asyncio.Semaphore ====================
+async def fetch_with_semaphore(urls: list[str], limit: int):
+    semaphore = asyncio.Semaphore(limit)
+    
+    async def fetch_one(url: str):
+        async with semaphore:  # 自动获取和释放
+            return await fetch(url)
+    
+    return await asyncio.gather(*[fetch_one(url) for url in urls])
+
+# BoundedSemaphore - 防止多次释放
+async def safe_semaphore_example():
+    sem = asyncio.BoundedSemaphore(3)
+    
+    async with sem:
+        await do_work()
+    
+    # sem.release()  # 额外释放会抛出 ValueError
+
+# 手动获取和释放
+async def manual_semaphore():
+    sem = asyncio.Semaphore(3)
+    
+    await sem.acquire()
+    try:
+        await do_work()
+    finally:
+        sem.release()
+
+# 线程版本
+import threading
+
+def threaded_work(urls: list[str], limit: int):
+    semaphore = threading.Semaphore(limit)
+    results = []
+    threads = []
+    
+    def worker(url: str):
+        with semaphore:
+            result = fetch_sync(url)
+            results.append(result)
+    
+    for url in urls:
+        t = threading.Thread(target=worker, args=(url,))
+        threads.append(t)
+        t.start()
+    
+    for t in threads:
+        t.join()
+    
+    return results
+```
+
+**Go**
+```go
+import (
+    "context"
+    "golang.org/x/sync/semaphore"
+)
+
+// ==================== 使用 channel 实现信号量 ====================
+func fetchWithSemaphore(urls []string, limit int) []string {
+    sem := make(chan struct{}, limit)
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            
+            sem <- struct{}{}        // 获取许可
+            defer func() { <-sem }() // 释放许可
+            
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()
+    return results
+}
+
+// 使用 golang.org/x/sync/semaphore 包
+func fetchWithWeightedSemaphore(urls []string, limit int64) ([]string, error) {
+    sem := semaphore.NewWeighted(limit)
+    ctx := context.Background()
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            
+            // 获取 1 个许可
+            if err := sem.Acquire(ctx, 1); err != nil {
+                return
+            }
+            defer sem.Release(1)
+            
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()
+    return results, nil
+}
+
+// 加权信号量 - 不同任务消耗不同许可
+func weightedTasks(tasks []Task) error {
+    sem := semaphore.NewWeighted(100)  // 总容量 100
+    ctx := context.Background()
+    
+    var wg sync.WaitGroup
+    for _, task := range tasks {
+        wg.Add(1)
+        go func(t Task) {
+            defer wg.Done()
+            
+            // 大任务消耗更多许可
+            weight := int64(t.Weight)
+            if err := sem.Acquire(ctx, weight); err != nil {
+                return
+            }
+            defer sem.Release(weight)
+            
+            t.Execute()
+        }(task)
+    }
+    
+    wg.Wait()
+    return nil
+}
+
+// 带超时的信号量获取
+func acquireWithTimeout(sem *semaphore.Weighted, timeout time.Duration) error {
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
+    
+    return sem.Acquire(ctx, 1)
+}
+```
+
+**Rust**
+```rust
+use tokio::sync::{Semaphore, SemaphorePermit, OwnedSemaphorePermit};
+use std::sync::Arc;
+
+// ==================== tokio::sync::Semaphore ====================
+async fn fetch_with_semaphore(urls: Vec<String>, limit: usize) -> Vec<String> {
+    let semaphore = Arc::new(Semaphore::new(limit));
+    let mut handles = vec![];
+    
+    for url in urls {
+        let sem = semaphore.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+            fetch(&url).await
+        }));
+    }
+    
+    let mut results = vec![];
+    for handle in handles {
+        if let Ok(result) = handle.await {
+            results.push(result);
+        }
+    }
+    results
+}
+
+// OwnedSemaphorePermit - 所有权转移
+async fn fetch_owned_permit(
+    url: String,
+    semaphore: Arc<Semaphore>,
+) -> (String, OwnedSemaphorePermit) {
+    let permit = semaphore.clone().acquire_owned().await.unwrap();
+    let result = fetch(&url).await;
+    (result, permit)  // permit 可以被移动
+}
+
+// try_acquire - 非阻塞获取
+async fn try_fetch(url: &str, semaphore: &Semaphore) -> Option<String> {
+    match semaphore.try_acquire() {
+        Ok(_permit) => Some(fetch(url).await),
+        Err(_) => None,  // 没有可用许可
+    }
+}
+
+// 带超时的获取
+async fn acquire_with_timeout(
+    semaphore: &Semaphore,
+    timeout: Duration,
+) -> Result<SemaphorePermit, Error> {
+    match tokio::time::timeout(timeout, semaphore.acquire()).await {
+        Ok(Ok(permit)) => Ok(permit),
+        Ok(Err(_)) => Err(Error::SemaphoreClosed),
+        Err(_) => Err(Error::Timeout),
+    }
+}
+
+// 使用 std 的 Semaphore（同步）
+use std::sync::Semaphore as StdSemaphore;
+
+fn sync_fetch_limited(urls: Vec<String>, limit: usize) -> Vec<String> {
+    let sem = Arc::new(StdSemaphore::new(limit));
+    let results = Arc::new(Mutex::new(vec![]));
+    let mut handles = vec![];
+    
+    for url in urls {
+        let sem = sem.clone();
+        let results = results.clone();
+        handles.push(std::thread::spawn(move || {
+            let _permit = sem.acquire().unwrap();
+            let result = fetch_sync(&url);
+            results.lock().unwrap().push(result);
+        }));
+    }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    
+    Arc::try_unwrap(results).unwrap().into_inner().unwrap()
+}
+```
+
+#### Bucket-Limit - 令牌桶/漏桶限流
+
+**TypeScript**
+```typescript
+// ==================== 令牌桶 (Token Bucket) ====================
+class TokenBucket {
+    private tokens: number;
+    private lastRefill: number;
+    
+    constructor(
+        private capacity: number,      // 桶容量
+        private refillRate: number,    // 每秒填充速率
+    ) {
+        this.tokens = capacity;
+        this.lastRefill = Date.now();
+    }
+    
+    private refill(): void {
+        const now = Date.now();
+        const elapsed = (now - this.lastRefill) / 1000;
+        this.tokens = Math.min(this.capacity, this.tokens + elapsed * this.refillRate);
+        this.lastRefill = now;
+    }
+    
+    tryAcquire(tokens: number = 1): boolean {
+        this.refill();
+        if (this.tokens >= tokens) {
+            this.tokens -= tokens;
+            return true;
+        }
+        return false;
+    }
+    
+    async acquire(tokens: number = 1): Promise<void> {
+        while (!this.tryAcquire(tokens)) {
+            await new Promise(r => setTimeout(r, 100));
+        }
+    }
+}
+
+// 使用令牌桶限流 API 调用
+const bucket = new TokenBucket(10, 2);  // 容量10，每秒补充2个
+
+async function rateLimitedFetch(url: string): Promise<Response> {
+    await bucket.acquire();
+    return fetch(url);
+}
+
+// ==================== 漏桶 (Leaky Bucket) ====================
+class LeakyBucket {
+    private queue: (() => void)[] = [];
+    private processing = false;
+    
+    constructor(
+        private ratePerSecond: number  // 每秒处理数量
+    ) {}
+    
+    async add<T>(task: () => Promise<T>): Promise<T> {
+        return new Promise((resolve, reject) => {
+            this.queue.push(async () => {
+                try {
+                    resolve(await task());
+                } catch (e) {
+                    reject(e);
+                }
+            });
+            this.process();
+        });
+    }
+    
+    private async process(): Promise<void> {
+        if (this.processing) return;
+        this.processing = true;
+        
+        while (this.queue.length > 0) {
+            const task = this.queue.shift()!;
+            await task();
+            await new Promise(r => 
+                setTimeout(r, 1000 / this.ratePerSecond)
+            );
+        }
+        
+        this.processing = false;
+    }
+}
+
+// 滑动窗口限流
+class SlidingWindowRateLimiter {
+    private requests: number[] = [];
+    
+    constructor(
+        private windowMs: number,
+        private maxRequests: number
+    ) {}
+    
+    tryAcquire(): boolean {
+        const now = Date.now();
+        this.requests = this.requests.filter(t => now - t < this.windowMs);
+        
+        if (this.requests.length < this.maxRequests) {
+            this.requests.push(now);
+            return true;
+        }
+        return false;
+    }
+}
+```
+
+**Python**
+```python
+import asyncio
+import time
+from collections import deque
+from dataclasses import dataclass
+
+# ==================== 令牌桶 (Token Bucket) ====================
+class TokenBucket:
+    def __init__(self, capacity: int, refill_rate: float):
+        self.capacity = capacity
+        self.refill_rate = refill_rate  # tokens per second
+        self.tokens = capacity
+        self.last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+    
+    def _refill(self):
+        now = time.monotonic()
+        elapsed = now - self.last_refill
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+        self.last_refill = now
+    
+    async def acquire(self, tokens: int = 1):
+        async with self._lock:
+            while True:
+                self._refill()
+                if self.tokens >= tokens:
+                    self.tokens -= tokens
+                    return
+                # 等待足够的 token
+                wait_time = (tokens - self.tokens) / self.refill_rate
+                await asyncio.sleep(wait_time)
+
+# 使用令牌桶
+bucket = TokenBucket(capacity=10, refill_rate=2.0)
+
+async def rate_limited_fetch(url: str):
+    await bucket.acquire()
+    return await fetch(url)
+
+# ==================== 漏桶 (Leaky Bucket) ====================
+class LeakyBucket:
+    def __init__(self, rate_per_second: float):
+        self.rate = rate_per_second
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self._processing = False
+    
+    async def add(self, coro):
+        future = asyncio.Future()
+        await self.queue.put((coro, future))
+        asyncio.create_task(self._process())
+        return await future
+    
+    async def _process(self):
+        if self._processing:
+            return
+        self._processing = True
+        
+        while not self.queue.empty():
+            coro, future = await self.queue.get()
+            try:
+                result = await coro
+                future.set_result(result)
+            except Exception as e:
+                future.set_exception(e)
+            await asyncio.sleep(1.0 / self.rate)
+        
+        self._processing = False
+
+# ==================== 滑动窗口限流 ====================
+class SlidingWindowLimiter:
+    def __init__(self, window_seconds: float, max_requests: int):
+        self.window = window_seconds
+        self.max_requests = max_requests
+        self.requests: deque = deque()
+        self._lock = asyncio.Lock()
+    
+    async def acquire(self) -> bool:
+        async with self._lock:
+            now = time.monotonic()
+            # 移除窗口外的请求
+            while self.requests and now - self.requests[0] > self.window:
+                self.requests.popleft()
+            
+            if len(self.requests) < self.max_requests:
+                self.requests.append(now)
+                return True
+            return False
+    
+    async def wait_and_acquire(self):
+        while not await self.acquire():
+            await asyncio.sleep(0.1)
+```
+
+**Go**
+```go
+import (
+    "context"
+    "sync"
+    "time"
+    "golang.org/x/time/rate"
+)
+
+// ==================== 使用 golang.org/x/time/rate ====================
+func rateLimitedFetch(urls []string) []string {
+    // 每秒 10 个请求，突发最多 5 个
+    limiter := rate.NewLimiter(rate.Limit(10), 5)
+    
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+    
+    for i, url := range urls {
+        wg.Add(1)
+        go func(idx int, u string) {
+            defer wg.Done()
+            
+            // 等待获取令牌
+            if err := limiter.Wait(context.Background()); err != nil {
+                return
+            }
+            
+            results[idx] = fetch(u)
+        }(i, url)
+    }
+    
+    wg.Wait()
+    return results
+}
+
+// 预留令牌
+func reserveExample(limiter *rate.Limiter) {
+    r := limiter.Reserve()
+    if !r.OK() {
+        return  // 无法预留
+    }
+    
+    delay := r.Delay()
+    time.Sleep(delay)  // 等待
+    
+    // 执行操作
+}
+
+// 尝试获取（非阻塞）
+func tryAcquire(limiter *rate.Limiter) bool {
+    return limiter.Allow()
+}
+
+// ==================== 自定义令牌桶 ====================
+type TokenBucket struct {
+    capacity   int64
+    tokens     int64
+    refillRate float64  // per second
+    lastRefill time.Time
+    mu         sync.Mutex
+}
+
+func NewTokenBucket(capacity int64, refillRate float64) *TokenBucket {
+    return &TokenBucket{
+        capacity:   capacity,
+        tokens:     capacity,
+        refillRate: refillRate,
+        lastRefill: time.Now(),
+    }
+}
+
+func (b *TokenBucket) refill() {
+    now := time.Now()
+    elapsed := now.Sub(b.lastRefill).Seconds()
+    b.tokens = min(b.capacity, b.tokens+int64(elapsed*b.refillRate))
+    b.lastRefill = now
+}
+
+func (b *TokenBucket) Acquire(n int64) {
+    b.mu.Lock()
+    defer b.mu.Unlock()
+    
+    for {
+        b.refill()
+        if b.tokens >= n {
+            b.tokens -= n
+            return
+        }
+        
+        // 计算等待时间
+        needed := float64(n - b.tokens)
+        waitTime := time.Duration(needed/b.refillRate) * time.Second
+        b.mu.Unlock()
+        time.Sleep(waitTime)
+        b.mu.Lock()
+    }
+}
+
+// ==================== 滑动窗口限流 ====================
+type SlidingWindowLimiter struct {
+    window      time.Duration
+    maxRequests int
+    requests    []time.Time
+    mu          sync.Mutex
+}
+
+func NewSlidingWindowLimiter(window time.Duration, max int) *SlidingWindowLimiter {
+    return &SlidingWindowLimiter{
+        window:      window,
+        maxRequests: max,
+        requests:    make([]time.Time, 0),
+    }
+}
+
+func (l *SlidingWindowLimiter) Allow() bool {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+    
+    now := time.Now()
+    cutoff := now.Add(-l.window)
+    
+    // 移除过期请求
+    valid := l.requests[:0]
+    for _, t := range l.requests {
+        if t.After(cutoff) {
+            valid = append(valid, t)
+        }
+    }
+    l.requests = valid
+    
+    if len(l.requests) < l.maxRequests {
+        l.requests = append(l.requests, now)
+        return true
+    }
+    return false
+}
+```
+
+**Rust**
+```rust
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use std::time::{Duration, Instant};
+use std::collections::VecDeque;
+
+// ==================== 令牌桶 (Token Bucket) ====================
+pub struct TokenBucket {
+    capacity: f64,
+    tokens: f64,
+    refill_rate: f64,  // tokens per second
+    last_refill: Instant,
+}
+
+impl TokenBucket {
+    pub fn new(capacity: f64, refill_rate: f64) -> Self {
+        Self {
+            capacity,
+            tokens: capacity,
+            refill_rate,
+            last_refill: Instant::now(),
+        }
+    }
+    
+    fn refill(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
+        self.tokens = (self.tokens + elapsed * self.refill_rate).min(self.capacity);
+        self.last_refill = now;
+    }
+    
+    pub fn try_acquire(&mut self, tokens: f64) -> bool {
+        self.refill();
+        if self.tokens >= tokens {
+            self.tokens -= tokens;
+            true
+        } else {
+            false
+        }
+    }
+    
+    pub async fn acquire(&mut self, tokens: f64) {
+        loop {
+            self.refill();
+            if self.tokens >= tokens {
+                self.tokens -= tokens;
+                return;
+            }
+            
+            let wait_time = (tokens - self.tokens) / self.refill_rate;
+            tokio::time::sleep(Duration::from_secs_f64(wait_time)).await;
+        }
+    }
+}
+
+// 线程安全版本
+pub struct AsyncTokenBucket {
+    inner: Arc<Mutex<TokenBucket>>,
+}
+
+impl AsyncTokenBucket {
+    pub fn new(capacity: f64, refill_rate: f64) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(TokenBucket::new(capacity, refill_rate))),
+        }
+    }
+    
+    pub async fn acquire(&self, tokens: f64) {
+        loop {
+            {
+                let mut bucket = self.inner.lock().await;
+                if bucket.try_acquire(tokens) {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+}
+
+// ==================== 使用 governor crate ====================
+use governor::{Quota, RateLimiter};
+use std::num::NonZeroU32;
+
+async fn rate_limited_fetch(urls: Vec<String>) -> Vec<String> {
+    // 每秒 10 个请求
+    let limiter = RateLimiter::direct(Quota::per_second(NonZeroU32::new(10).unwrap()));
+    
+    let mut results = Vec::new();
+    for url in urls {
+        limiter.until_ready().await;
+        results.push(fetch(&url).await);
+    }
+    results
+}
+
+// ==================== 滑动窗口限流 ====================
+pub struct SlidingWindowLimiter {
+    window: Duration,
+    max_requests: usize,
+    requests: VecDeque<Instant>,
+}
+
+impl SlidingWindowLimiter {
+    pub fn new(window: Duration, max_requests: usize) -> Self {
+        Self {
+            window,
+            max_requests,
+            requests: VecDeque::new(),
+        }
+    }
+    
+    pub fn allow(&mut self) -> bool {
+        let now = Instant::now();
+        let cutoff = now - self.window;
+        
+        // 移除过期请求
+        while let Some(front) = self.requests.front() {
+            if *front < cutoff {
+                self.requests.pop_front();
+            } else {
+                break;
+            }
+        }
+        
+        if self.requests.len() < self.max_requests {
+            self.requests.push_back(now);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+// 异步版本
+pub struct AsyncSlidingWindowLimiter {
+    inner: Arc<Mutex<SlidingWindowLimiter>>,
+}
+
+impl AsyncSlidingWindowLimiter {
+    pub async fn wait_and_acquire(&self) {
+        loop {
+            if self.inner.lock().await.allow() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+}
+```
+
+### 并发控制模式对比
+
+| 模式 | 用途 | TypeScript | Python | Go | Rust |
+|------|------|------------|--------|-----|------|
+| **All** | 等待所有任务完成 | `Promise.all` | `asyncio.gather` | `sync.WaitGroup` | `join_all` |
+| **AllSettled** | 等待所有（含失败） | `Promise.allSettled` | `gather(return_exceptions=True)` | `errgroup` | `JoinSet` |
+| **Race** | 返回最快结果 | `Promise.race` | `asyncio.wait(FIRST_COMPLETED)` | `select` | `select!` |
+| **Any** | 返回首个成功 | `Promise.any` | 手动实现 | 手动实现 | 手动实现 |
+| **Timeout** | 超时控制 | `AbortSignal.timeout` | `asyncio.timeout` | `context.WithTimeout` | `tokio::time::timeout` |
+| **Cancel** | 取消操作 | `AbortController` | `Task.cancel()` | `context.WithCancel` | `CancellationToken` |
+| **Semaphore** | 并发数控制 | 手动/p-limit | `asyncio.Semaphore` | `channel`/`semaphore` | `tokio::sync::Semaphore` |
+| **Token Bucket** | 令牌桶限流 | 手动实现 | 手动实现 | `x/time/rate` | `governor` |
+| **Leaky Bucket** | 漏桶限流 | 手动实现 | 手动实现 | 手动实现 | 手动实现 |
+| **Sliding Window** | 滑动窗口限流 | 手动实现 | 手动实现 | 手动实现 | 手动实现 |
+
+### 并发数据传递
+
+#### 数据传递方式概览
+
+| 方式 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 消息传递 | `postMessage` | `Queue` | `chan` | `mpsc/broadcast` |
+| 共享内存 | `SharedArrayBuffer` | `multiprocessing.Value` | `sync.Mutex` | `Arc<Mutex<T>>` |
+| 原子操作 | `Atomics` | `threading.Lock` | `atomic` | `std::sync::atomic` |
+| 返回值 | `Promise` | `Future` | 返回值 | `JoinHandle` |
+| 回调 | 回调函数 | 回调函数 | 函数参数 | 闭包 |
+
+#### TypeScript 并发数据传递
+
+```typescript
+// ==================== Promise 链传递 ====================
+async function pipeline() {
+    const data = await fetchData();
+    const processed = await processData(data);
+    const result = await saveData(processed);
+    return result;
+}
+
+// Promise 结果收集
+const results = await Promise.all([
+    fetchUsers(),
+    fetchPosts(),
+    fetchComments()
+]);
+const [users, posts, comments] = results;
+
+// ==================== 回调传递 ====================
+function fetchWithCallback(
+    url: string,
+    onSuccess: (data: any) => void,
+    onError: (err: Error) => void
+) {
+    fetch(url)
+        .then(res => res.json())
+        .then(onSuccess)
+        .catch(onError);
+}
+
+// ==================== EventEmitter 模式 ====================
+import { EventEmitter } from 'events';
+
+class DataProcessor extends EventEmitter {
+    process(data: any) {
+        this.emit('start', data);
+        const result = transform(data);
+        this.emit('complete', result);
+        return result;
+    }
+}
+
+const processor = new DataProcessor();
+processor.on('complete', (result) => console.log(result));
+
+// ==================== Worker 线程通信 ====================
+// main.ts
+const worker = new Worker('./worker.js');
+
+// 发送数据到 Worker
+worker.postMessage({ type: 'process', data: largeArray });
+
+// 接收 Worker 结果
+worker.onmessage = (event) => {
+    const { type, result } = event.data;
+    if (type === 'result') {
+        console.log('Processed:', result);
+    }
+};
+
+// worker.ts
+self.onmessage = (event) => {
+    const { type, data } = event.data;
+    if (type === 'process') {
+        const result = heavyComputation(data);
+        self.postMessage({ type: 'result', result });
+    }
+};
+
+// ==================== SharedArrayBuffer 共享内存 ====================
+// 创建共享缓冲区
+const sharedBuffer = new SharedArrayBuffer(1024);
+const sharedArray = new Int32Array(sharedBuffer);
+
+// 主线程
+worker.postMessage({ buffer: sharedBuffer });
+sharedArray[0] = 42;  // 直接修改共享内存
+
+// Worker 线程
+self.onmessage = (event) => {
+    const view = new Int32Array(event.data.buffer);
+    console.log(view[0]);  // 42 - 读取共享内存
+    Atomics.add(view, 0, 1);  // 原子操作
+};
+
+// ==================== Atomics 原子操作 ====================
+const sab = new SharedArrayBuffer(4);
+const arr = new Int32Array(sab);
+
+// 原子读写
+Atomics.store(arr, 0, 123);
+Atomics.load(arr, 0);  // 123
+
+// 原子加减
+Atomics.add(arr, 0, 10);      // 返回旧值，arr[0] += 10
+Atomics.sub(arr, 0, 5);       // 返回旧值，arr[0] -= 5
+
+// 比较并交换
+Atomics.compareExchange(arr, 0, 128, 200);  // 如果是128则改为200
+
+// 等待/通知 (线程同步)
+// Worker 1: 等待
+Atomics.wait(arr, 0, 0);  // 阻塞直到 arr[0] != 0
+
+// Worker 2: 通知
+Atomics.store(arr, 0, 1);
+Atomics.notify(arr, 0, 1);  // 唤醒一个等待者
+
+// ==================== MessageChannel ====================
+const channel = new MessageChannel();
+const port1 = channel.port1;
+const port2 = channel.port2;
+
+// 发送到另一个上下文
+worker.postMessage({ port: port2 }, [port2]);
+
+// 通过 port 通信
+port1.onmessage = (e) => console.log(e.data);
+port1.postMessage('Hello from main');
+
+// ==================== BroadcastChannel ====================
+// 跨标签页/Worker 广播
+const broadcast = new BroadcastChannel('app-channel');
+
+// 发送
+broadcast.postMessage({ type: 'update', data: newData });
+
+// 接收 (所有订阅者)
+broadcast.onmessage = (event) => {
+    console.log('Received:', event.data);
+};
+
+// ==================== 流式数据传递 ====================
+async function* streamData(): AsyncGenerator<number> {
+    for (let i = 0; i < 100; i++) {
+        yield await fetchChunk(i);
+    }
+}
+
+// 消费流
+for await (const chunk of streamData()) {
+    process(chunk);
+}
+
+// ReadableStream
+const stream = new ReadableStream({
+    async start(controller) {
+        for (let i = 0; i < 10; i++) {
+            controller.enqueue(i);
+            await delay(100);
+        }
+        controller.close();
+    }
+});
+
+const reader = stream.getReader();
+while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    console.log(value);
+}
+```
+
+#### Python 并发数据传递
+
+```python
+import asyncio
+import queue
+import threading
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+# ==================== asyncio.Queue ====================
+async def producer(q: asyncio.Queue):
+    for i in range(10):
+        await q.put(i)
+        print(f"Produced: {i}")
+        await asyncio.sleep(0.1)
+    await q.put(None)  # 结束信号
+
+async def consumer(q: asyncio.Queue):
+    while True:
+        item = await q.get()
+        if item is None:
+            break
+        print(f"Consumed: {item}")
+        q.task_done()
+
+async def main():
+    q = asyncio.Queue(maxsize=5)  # 有界队列
+    await asyncio.gather(
+        producer(q),
+        consumer(q)
+    )
+
+# ==================== threading.Queue ====================
+def threaded_producer(q: queue.Queue):
+    for i in range(10):
+        q.put(i)
+    q.put(None)
+
+def threaded_consumer(q: queue.Queue):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(f"Got: {item}")
+        q.task_done()
+
+q = queue.Queue()
+producer_thread = threading.Thread(target=threaded_producer, args=(q,))
+consumer_thread = threading.Thread(target=threaded_consumer, args=(q,))
+
+# 优先队列
+pq = queue.PriorityQueue()
+pq.put((1, "high priority"))
+pq.put((10, "low priority"))
+
+# ==================== multiprocessing 进程间通信 ====================
+# Queue
+def mp_producer(q: multiprocessing.Queue):
+    for i in range(10):
+        q.put(i)
+    q.put(None)
+
+def mp_consumer(q: multiprocessing.Queue):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(f"Process got: {item}")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    p1 = multiprocessing.Process(target=mp_producer, args=(q,))
+    p2 = multiprocessing.Process(target=mp_consumer, args=(q,))
+    p1.start()
+    p2.start()
+
+# Pipe - 双向通信
+def pipe_sender(conn):
+    conn.send("Hello")
+    conn.send([1, 2, 3])
+    conn.close()
+
+def pipe_receiver(conn):
+    print(conn.recv())  # "Hello"
+    print(conn.recv())  # [1, 2, 3]
+
+parent_conn, child_conn = multiprocessing.Pipe()
+
+# ==================== 共享内存 ====================
+# Value - 单个值
+counter = multiprocessing.Value('i', 0)  # 'i' = int
+
+def increment(counter):
+    for _ in range(1000):
+        with counter.get_lock():
+            counter.value += 1
+
+# Array - 数组
+shared_array = multiprocessing.Array('d', [0.0] * 10)  # 'd' = double
+
+# shared_memory (Python 3.8+)
+from multiprocessing import shared_memory
+
+# 创建共享内存
+shm = shared_memory.SharedMemory(create=True, size=1024)
+buffer = shm.buf
+
+# 写入
+buffer[0:5] = b'Hello'
+
+# 另一个进程访问
+shm2 = shared_memory.SharedMemory(name=shm.name)
+print(bytes(shm2.buf[0:5]))  # b'Hello'
+
+# 清理
+shm.close()
+shm.unlink()
+
+# ==================== Manager - 共享复杂对象 ====================
+manager = multiprocessing.Manager()
+shared_dict = manager.dict()
+shared_list = manager.list()
+
+def worker(d, l, key, value):
+    d[key] = value
+    l.append(value)
+
+# ==================== Future 结果获取 ====================
+with ThreadPoolExecutor(max_workers=4) as executor:
+    # submit 返回 Future
+    future = executor.submit(heavy_task, arg1, arg2)
+    
+    # 获取结果 (阻塞)
+    result = future.result(timeout=10)
+    
+    # 检查状态
+    future.done()       # 是否完成
+    future.cancelled()  # 是否取消
+    future.exception()  # 获取异常
+
+# map 批量获取结果
+with ProcessPoolExecutor() as executor:
+    results = list(executor.map(process, items))
+
+# as_completed 按完成顺序获取
+from concurrent.futures import as_completed
+
+futures = [executor.submit(task, i) for i in range(10)]
+for future in as_completed(futures):
+    result = future.result()
+    print(result)
+
+# ==================== 回调函数 ====================
+def on_complete(future):
+    print(f"Result: {future.result()}")
+
+future = executor.submit(task)
+future.add_done_callback(on_complete)
+
+# ==================== asyncio 事件 ====================
+event = asyncio.Event()
+
+async def waiter():
+    print("Waiting...")
+    await event.wait()
+    print("Event fired!")
+
+async def setter():
+    await asyncio.sleep(1)
+    event.set()
+
+# Condition
+condition = asyncio.Condition()
+
+async def consumer():
+    async with condition:
+        await condition.wait()
+        # 处理数据
+
+async def producer():
+    async with condition:
+        # 准备数据
+        condition.notify_all()
+```
+
+#### Go 并发数据传递
+
+```go
+// ==================== Channel 基础 ====================
+// 无缓冲 channel (同步)
+ch := make(chan int)
+
+// 有缓冲 channel (异步)
+buffered := make(chan int, 10)
+
+// 发送和接收
+go func() {
+    ch <- 42  // 发送
+}()
+value := <-ch  // 接收
+
+// 关闭 channel
+close(ch)
+
+// 检查是否关闭
+value, ok := <-ch
+if !ok {
+    fmt.Println("Channel closed")
+}
+
+// ==================== Channel 方向 ====================
+// 只发送
+func producer(out chan<- int) {
+    for i := 0; i < 10; i++ {
+        out <- i
+    }
+    close(out)
+}
+
+// 只接收
+func consumer(in <-chan int) {
+    for value := range in {
+        fmt.Println(value)
+    }
+}
+
+// ==================== 生产者-消费者模式 ====================
+func main() {
+    ch := make(chan int, 5)
+    
+    // 生产者
+    go func() {
+        for i := 0; i < 10; i++ {
+            ch <- i
+            fmt.Printf("Produced: %d\n", i)
+        }
+        close(ch)
+    }()
+    
+    // 消费者
+    for value := range ch {
+        fmt.Printf("Consumed: %d\n", value)
+    }
+}
+
+// ==================== select 多路复用 ====================
+func main() {
+    ch1 := make(chan string)
+    ch2 := make(chan string)
+    
+    go func() {
+        time.Sleep(1 * time.Second)
+        ch1 <- "one"
+    }()
+    
+    go func() {
+        time.Sleep(2 * time.Second)
+        ch2 <- "two"
+    }()
+    
+    for i := 0; i < 2; i++ {
+        select {
+        case msg1 := <-ch1:
+            fmt.Println("Received", msg1)
+        case msg2 := <-ch2:
+            fmt.Println("Received", msg2)
+        case <-time.After(3 * time.Second):
+            fmt.Println("Timeout")
+        }
+    }
+}
+
+// 非阻塞 select
+select {
+case msg := <-ch:
+    fmt.Println(msg)
+default:
+    fmt.Println("No message")
+}
+
+// ==================== Fan-out / Fan-in ====================
+// Fan-out: 一个 channel 分发给多个 worker
+func fanOut(input <-chan int, workers int) []<-chan int {
+    outputs := make([]<-chan int, workers)
+    for i := 0; i < workers; i++ {
+        outputs[i] = worker(input)
+    }
+    return outputs
+}
+
+func worker(input <-chan int) <-chan int {
+    output := make(chan int)
+    go func() {
+        defer close(output)
+        for n := range input {
+            output <- process(n)
+        }
+    }()
+    return output
+}
+
+// Fan-in: 多个 channel 合并为一个
+func fanIn(inputs ...<-chan int) <-chan int {
+    output := make(chan int)
+    var wg sync.WaitGroup
+    
+    for _, ch := range inputs {
+        wg.Add(1)
+        go func(c <-chan int) {
+            defer wg.Done()
+            for n := range c {
+                output <- n
+            }
+        }(ch)
+    }
+    
+    go func() {
+        wg.Wait()
+        close(output)
+    }()
+    
+    return output
+}
+
+// ==================== Pipeline 模式 ====================
+func gen(nums ...int) <-chan int {
+    out := make(chan int)
+    go func() {
+        for _, n := range nums {
+            out <- n
+        }
+        close(out)
+    }()
+    return out
+}
+
+func square(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        for n := range in {
+            out <- n * n
+        }
+        close(out)
+    }()
+    return out
+}
+
+func double(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        for n := range in {
+            out <- n * 2
+        }
+        close(out)
+    }()
+    return out
+}
+
+// 使用
+func main() {
+    // gen -> square -> double
+    for n := range double(square(gen(1, 2, 3, 4))) {
+        fmt.Println(n)  // 2, 8, 18, 32
+    }
+}
+
+// ==================== 共享内存 (Mutex) ====================
+type SafeCounter struct {
+    mu    sync.Mutex
+    value int
+}
+
+func (c *SafeCounter) Inc() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.value++
+}
+
+func (c *SafeCounter) Value() int {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    return c.value
+}
+
+// RWMutex 读写锁
+type SafeMap struct {
+    mu sync.RWMutex
+    m  map[string]int
+}
+
+func (sm *SafeMap) Get(key string) int {
+    sm.mu.RLock()  // 读锁
+    defer sm.mu.RUnlock()
+    return sm.m[key]
+}
+
+func (sm *SafeMap) Set(key string, value int) {
+    sm.mu.Lock()   // 写锁
+    defer sm.mu.Unlock()
+    sm.m[key] = value
+}
+
+// ==================== sync.Map ====================
+var m sync.Map
+
+// 存储
+m.Store("key", "value")
+
+// 读取
+value, ok := m.Load("key")
+
+// 读取或存储
+actual, loaded := m.LoadOrStore("key", "default")
+
+// 删除
+m.Delete("key")
+
+// 遍历
+m.Range(func(key, value any) bool {
+    fmt.Printf("%v: %v\n", key, value)
+    return true  // 继续遍历
+})
+
+// ==================== atomic 原子操作 ====================
+var counter int64
+
+// 原子加
+atomic.AddInt64(&counter, 1)
+
+// 原子读写
+atomic.StoreInt64(&counter, 100)
+value := atomic.LoadInt64(&counter)
+
+// 比较并交换
+swapped := atomic.CompareAndSwapInt64(&counter, 100, 200)
+
+// atomic.Value 存储任意类型
+var config atomic.Value
+config.Store(map[string]string{"key": "value"})
+cfg := config.Load().(map[string]string)
+
+// ==================== sync.Pool 对象池 ====================
+var bufferPool = sync.Pool{
+    New: func() any {
+        return make([]byte, 1024)
+    },
+}
+
+// 获取
+buf := bufferPool.Get().([]byte)
+
+// 使用后归还
+bufferPool.Put(buf)
+
+// ==================== Context 传递数据 ====================
+type key string
+
+func main() {
+    ctx := context.Background()
+    ctx = context.WithValue(ctx, key("userID"), "12345")
+    
+    processRequest(ctx)
+}
+
+func processRequest(ctx context.Context) {
+    userID := ctx.Value(key("userID")).(string)
+    fmt.Println("User:", userID)
+}
+```
+
+#### Rust 并发数据传递
+
+```rust
+use std::sync::{Arc, Mutex, RwLock, mpsc, atomic::{AtomicUsize, Ordering}};
+use std::thread;
+use tokio::sync::{mpsc as tokio_mpsc, broadcast, oneshot, watch};
+
+// ==================== std::sync::mpsc (多生产者单消费者) ====================
+fn mpsc_example() {
+    let (tx, rx) = mpsc::channel();
+    
+    // 多个生产者
+    for i in 0..3 {
+        let tx_clone = tx.clone();
+        thread::spawn(move || {
+            tx_clone.send(format!("Message from {}", i)).unwrap();
+        });
+    }
+    drop(tx);  // 关闭原始发送端
+    
+    // 单个消费者
+    for received in rx {
+        println!("Got: {}", received);
+    }
+}
+
+// 同步 channel (有界)
+fn sync_channel_example() {
+    let (tx, rx) = mpsc::sync_channel(2);  // 缓冲区大小 2
+    
+    thread::spawn(move || {
+        tx.send(1).unwrap();
+        tx.send(2).unwrap();
+        tx.send(3).unwrap();  // 阻塞，直到有空间
+    });
+    
+    for val in rx {
+        println!("{}", val);
+    }
+}
+
+// ==================== tokio::sync::mpsc (异步) ====================
+async fn tokio_mpsc_example() {
+    let (tx, mut rx) = tokio_mpsc::channel(100);
+    
+    // 生产者
+    tokio::spawn(async move {
+        for i in 0..10 {
+            tx.send(i).await.unwrap();
+        }
+    });
+    
+    // 消费者
+    while let Some(value) = rx.recv().await {
+        println!("Received: {}", value);
+    }
+}
+
+// ==================== broadcast (多生产者多消费者) ====================
+async fn broadcast_example() {
+    let (tx, mut rx1) = broadcast::channel(16);
+    let mut rx2 = tx.subscribe();
+    
+    tokio::spawn(async move {
+        while let Ok(value) = rx1.recv().await {
+            println!("Receiver 1: {}", value);
+        }
+    });
+    
+    tokio::spawn(async move {
+        while let Ok(value) = rx2.recv().await {
+            println!("Receiver 2: {}", value);
+        }
+    });
+    
+    tx.send("Hello").unwrap();
+    tx.send("World").unwrap();
+}
+
+// ==================== oneshot (单次传递) ====================
+async fn oneshot_example() {
+    let (tx, rx) = oneshot::channel();
+    
+    tokio::spawn(async move {
+        // 执行计算
+        let result = expensive_computation().await;
+        tx.send(result).unwrap();
+    });
+    
+    // 等待结果
+    let result = rx.await.unwrap();
+    println!("Result: {}", result);
+}
+
+// ==================== watch (单生产者多消费者，最新值) ====================
+async fn watch_example() {
+    let (tx, mut rx) = watch::channel("initial");
+    
+    tokio::spawn(async move {
+        loop {
+            // 等待值改变
+            rx.changed().await.unwrap();
+            println!("Value changed to: {}", *rx.borrow());
+        }
+    });
+    
+    tx.send("updated").unwrap();
+    tx.send("final").unwrap();
+}
+
+// ==================== Arc<Mutex<T>> 共享可变状态 ====================
+fn shared_state_example() {
+    let counter = Arc::new(Mutex::new(0));
+    let mut handles = vec![];
+    
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        let handle = thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    
+    println!("Result: {}", *counter.lock().unwrap());
+}
+
+// 异步版本
+async fn async_shared_state() {
+    let counter = Arc::new(tokio::sync::Mutex::new(0));
+    
+    let mut handles = vec![];
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        handles.push(tokio::spawn(async move {
+            let mut num = counter.lock().await;
+            *num += 1;
+        }));
+    }
+    
+    for handle in handles {
+        handle.await.unwrap();
+    }
+}
+
+// ==================== RwLock 读写锁 ====================
+fn rwlock_example() {
+    let data = Arc::new(RwLock::new(vec![1, 2, 3]));
+    
+    // 多个读者
+    let data_clone = Arc::clone(&data);
+    thread::spawn(move || {
+        let reader = data_clone.read().unwrap();
+        println!("Read: {:?}", *reader);
+    });
+    
+    // 写者
+    {
+        let mut writer = data.write().unwrap();
+        writer.push(4);
+    }
+}
+
+// ==================== Atomic 原子类型 ====================
+fn atomic_example() {
+    let counter = Arc::new(AtomicUsize::new(0));
+    let mut handles = vec![];
+    
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        handles.push(thread::spawn(move || {
+            for _ in 0..1000 {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        }));
+    }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    
+    println!("Counter: {}", counter.load(Ordering::SeqCst));
+}
+
+// ==================== JoinHandle 获取返回值 ====================
+fn join_handle_example() {
+    let handle = thread::spawn(|| {
+        // 计算
+        42
+    });
+    
+    let result = handle.join().unwrap();
+    println!("Thread returned: {}", result);
+}
+
+// tokio 版本
+async fn tokio_join_example() {
+    let handle = tokio::spawn(async {
+        expensive_computation().await
+    });
+    
+    let result = handle.await.unwrap();
+}
+
+// ==================== crossbeam channel (高性能) ====================
+use crossbeam_channel::{bounded, unbounded, select};
+
+fn crossbeam_example() {
+    let (s, r) = bounded(10);  // 有界
+    // let (s, r) = unbounded(); // 无界
+    
+    thread::spawn(move || {
+        s.send("Hello").unwrap();
+    });
+    
+    println!("{}", r.recv().unwrap());
+}
+
+// select 宏
+fn crossbeam_select() {
+    let (s1, r1) = unbounded();
+    let (s2, r2) = unbounded();
+    
+    thread::spawn(move || s1.send(1).unwrap());
+    thread::spawn(move || s2.send(2).unwrap());
+    
+    select! {
+        recv(r1) -> msg => println!("r1: {:?}", msg),
+        recv(r2) -> msg => println!("r2: {:?}", msg),
+    }
+}
+
+// ==================== flume (高性能 mpmc) ====================
+use flume;
+
+async fn flume_example() {
+    let (tx, rx) = flume::bounded(100);
+    
+    // 同步发送
+    tx.send(1).unwrap();
+    
+    // 异步发送
+    tx.send_async(2).await.unwrap();
+    
+    // 同步接收
+    let val = rx.recv().unwrap();
+    
+    // 异步接收
+    let val = rx.recv_async().await.unwrap();
+}
+
+// ==================== 并发数据结构 ====================
+use dashmap::DashMap;
+
+fn dashmap_example() {
+    let map = DashMap::new();
+    
+    // 并发插入
+    map.insert("key", "value");
+    
+    // 并发读取
+    if let Some(val) = map.get("key") {
+        println!("{}", *val);
+    }
+    
+    // 并发修改
+    map.alter("key", |_, v| format!("{}_modified", v));
+}
+```
+
+### 并发数据传递对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 模式            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 基础 Channel    │ postMessage          │ queue.Queue          │ chan                 │ mpsc::channel        │
+│ 异步 Channel    │ MessageChannel       │ asyncio.Queue        │ chan                 │ tokio::sync::mpsc    │
+│ 广播            │ BroadcastChannel     │ 手动实现             │ 手动实现             │ broadcast::channel   │
+│ 单次传递        │ Promise              │ asyncio.Future       │ chan (cap=1)         │ oneshot::channel     │
+│ 共享状态        │ SharedArrayBuffer    │ Manager/Value        │ sync.Mutex           │ Arc<Mutex<T>>        │
+│ 读写锁          │ ❌                   │ threading.RWLock     │ sync.RWMutex         │ RwLock               │
+│ 原子操作        │ Atomics              │ ❌                   │ atomic               │ std::sync::atomic    │
+│ 对象池          │ ❌                   │ ❌                   │ sync.Pool            │ ❌                   │
+│ 并发 Map        │ ❌                   │ Manager.dict()       │ sync.Map             │ DashMap              │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 选择数据传递方式
+
+| 场景 | 推荐方式 | 原因 |
+|------|----------|------|
+| **任务结果返回** | Promise/Future/JoinHandle | 简单直接 |
+| **生产者-消费者** | Channel/Queue | 解耦，背压控制 |
+| **配置热更新** | watch/atomic.Value | 最新值广播 |
+| **高频读低频写** | RwLock | 读不阻塞 |
+| **计数器/标志** | Atomic | 无锁高性能 |
+| **复杂共享状态** | Mutex + Arc | 灵活但需注意死锁 |
+| **跨进程** | 共享内存/IPC | 高性能大数据 |
+
 ---
 
 ## ❓ 三元表达式
@@ -13224,6 +21955,841 @@ mycli/
 
 ---
 
+## 📦 模块导入导出
+
+### 模块系统概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 模块单位 | 文件 | 文件/包 | 包(目录) | 文件/crate |
+| 导入关键字 | `import` | `import` | `import` | `use` |
+| 导出关键字 | `export` | 无(默认公开) | 大写首字母 | `pub` |
+| 默认导出 | `export default` | 无 | 无 | 无 |
+| 重导出 | `export { } from` | `__all__` | 无(需包装) | `pub use` |
+| 循环依赖 | 支持(需注意) | 支持(需注意) | 禁止 | 禁止 |
+| 动态导入 | `import()` | `importlib` | 插件机制 | 不支持 |
+
+### TypeScript 模块导入导出
+
+```typescript
+// ==================== 命名导出 (Named Export) ====================
+// math.ts
+export const PI = 3.14159;
+export const E = 2.71828;
+
+export function add(a: number, b: number): number {
+    return a + b;
+}
+
+export function multiply(a: number, b: number): number {
+    return a * b;
+}
+
+export interface Point {
+    x: number;
+    y: number;
+}
+
+export class Calculator {
+    add(a: number, b: number): number {
+        return a + b;
+    }
+}
+
+// ==================== 命名导入 ====================
+// 导入特定项
+import { add, multiply, PI } from './math';
+import { Point, Calculator } from './math';
+
+// 重命名导入
+import { add as addNumbers, multiply as mult } from './math';
+
+// 导入全部为命名空间
+import * as MathUtils from './math';
+MathUtils.add(1, 2);
+MathUtils.PI;
+
+// ==================== 默认导出 (Default Export) ====================
+// logger.ts
+export default class Logger {
+    log(message: string): void {
+        console.log(`[LOG] ${message}`);
+    }
+}
+
+// 或函数
+export default function createLogger(prefix: string) {
+    return (msg: string) => console.log(`[${prefix}] ${msg}`);
+}
+
+// ==================== 默认导入 ====================
+import Logger from './logger';
+import createLogger from './logger';
+
+// 可以用任意名称
+import MyLogger from './logger';
+
+// 同时导入默认和命名
+import Logger, { LogLevel, formatMessage } from './logger';
+
+// ==================== 重导出 (Re-export) ====================
+// index.ts - 桶文件 (Barrel file)
+export { add, multiply } from './math';
+export { default as Logger } from './logger';
+export * from './utils';  // 导出所有命名导出
+export * as MathUtils from './math';  // 作为命名空间重导出
+
+// 重命名后重导出
+export { add as addition } from './math';
+
+// ==================== 类型导入导出 ====================
+// types.ts
+export type UserId = string;
+export interface User {
+    id: UserId;
+    name: string;
+}
+
+// 仅类型导入 (不会编译到 JS)
+import type { User, UserId } from './types';
+
+// 内联类型导入
+import { type User, createUser } from './user';
+
+// 类型重导出
+export type { User, UserId } from './types';
+
+// ==================== 动态导入 ====================
+// 懒加载模块
+async function loadModule() {
+    const { add } = await import('./math');
+    return add(1, 2);
+}
+
+// 条件导入
+async function loadLocale(lang: string) {
+    const locale = await import(`./locales/${lang}.json`);
+    return locale.default;
+}
+
+// 与 React.lazy 结合
+const LazyComponent = React.lazy(() => import('./HeavyComponent'));
+
+// ==================== 模块解析 ====================
+// 相对路径
+import { foo } from './utils';        // 同目录
+import { bar } from '../helpers';     // 上级目录
+import { baz } from './sub/module';   // 子目录
+
+// 绝对路径 (通过 tsconfig paths)
+import { api } from '@/services/api';
+import { Button } from '@components/Button';
+
+// Node 模块
+import express from 'express';
+import { readFile } from 'fs/promises';
+
+// ==================== CommonJS 互操作 ====================
+// 导入 CommonJS 模块
+import lodash from 'lodash';  // default import
+import * as _ from 'lodash';  // namespace import
+
+// 导出为 CommonJS (当 module: commonjs)
+module.exports = { add, multiply };
+exports.PI = 3.14;
+
+// ==================== tsconfig.json 配置 ====================
+{
+    "compilerOptions": {
+        "module": "ESNext",           // 模块系统
+        "moduleResolution": "bundler", // 解析策略
+        "baseUrl": "./src",           // 基础路径
+        "paths": {                    // 路径别名
+            "@/*": ["./*"],
+            "@components/*": ["components/*"]
+        },
+        "esModuleInterop": true,      // CJS/ESM 互操作
+        "allowSyntheticDefaultImports": true
+    }
+}
+```
+
+### Python 模块导入导出
+
+```python
+# ==================== 基本导入 ====================
+# 导入整个模块
+import math
+import os.path
+
+# 使用
+math.sqrt(16)
+os.path.join('a', 'b')
+
+# 导入并重命名
+import numpy as np
+import pandas as pd
+
+# ==================== 从模块导入 ====================
+# 导入特定项
+from math import sqrt, pi, ceil
+from os.path import join, exists
+
+# 导入并重命名
+from math import sqrt as square_root
+from collections import defaultdict as dd
+
+# 导入所有 (不推荐)
+from math import *
+
+# ==================== 包结构 ====================
+"""
+mypackage/
+├── __init__.py          # 包初始化文件
+├── module1.py
+├── module2.py
+└── subpackage/
+    ├── __init__.py
+    └── module3.py
+"""
+
+# ==================== __init__.py 控制导出 ====================
+# mypackage/__init__.py
+from .module1 import func1, Class1
+from .module2 import func2
+from .subpackage import module3
+
+# 定义公开 API
+__all__ = ['func1', 'Class1', 'func2']
+
+# 版本信息
+__version__ = '1.0.0'
+
+# 使用
+from mypackage import func1, Class1
+
+# ==================== 相对导入 ====================
+# 在包内部使用
+# mypackage/module2.py
+from . import module1           # 同级模块
+from .module1 import func1      # 同级模块的函数
+from .. import other_package    # 上级包
+from ..sibling import helper    # 兄弟包
+
+# ==================== 绝对导入 ====================
+# 推荐方式
+from mypackage.module1 import func1
+from mypackage.subpackage.module3 import something
+
+# ==================== 条件导入 ====================
+import sys
+
+if sys.version_info >= (3, 11):
+    from tomllib import load
+else:
+    from tomli import load
+
+# 可选依赖
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
+# 类型检查时导入 (避免循环导入)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .heavy_module import HeavyClass
+
+def process(obj: 'HeavyClass') -> None:
+    pass
+
+# ==================== 动态导入 ====================
+import importlib
+
+# 按名称导入模块
+module = importlib.import_module('math')
+module.sqrt(16)
+
+# 动态导入子模块
+def load_plugin(name: str):
+    return importlib.import_module(f'plugins.{name}')
+
+# 重新加载模块
+importlib.reload(module)
+
+# ==================== 导入钩子 ====================
+import sys
+from importlib.abc import MetaPathFinder, Loader
+from importlib.machinery import ModuleSpec
+
+class CustomFinder(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname.startswith('custom.'):
+            return ModuleSpec(fullname, CustomLoader())
+        return None
+
+class CustomLoader(Loader):
+    def create_module(self, spec):
+        return None
+    
+    def exec_module(self, module):
+        module.custom_attr = 'value'
+
+sys.meta_path.insert(0, CustomFinder())
+
+# ==================== 私有约定 ====================
+# module.py
+public_var = 'accessible'
+_private_var = 'internal use'  # 单下划线: 约定私有
+__very_private = 'name mangled'  # 双下划线: 名称改写
+
+def public_function():
+    pass
+
+def _private_function():  # 不会被 from module import * 导入
+    pass
+
+# ==================== 命名空间包 (PEP 420) ====================
+"""
+无需 __init__.py 的包:
+namespace_pkg/
+    └── sub1/
+        └── module.py
+
+other_location/namespace_pkg/
+    └── sub2/
+        └── module.py
+
+两者合并为同一命名空间
+"""
+
+# ==================== __all__ 详解 ====================
+# utils.py
+__all__ = ['public_func', 'PublicClass']
+
+def public_func():
+    """会被 from utils import * 导入"""
+    pass
+
+def _helper():
+    """不在 __all__ 中，* 导入不包含"""
+    pass
+
+class PublicClass:
+    pass
+
+class _InternalClass:
+    pass
+```
+
+### Go 模块导入导出
+
+```go
+// ==================== 包声明 ====================
+// 每个 Go 文件必须声明包名
+// main.go
+package main  // 可执行程序的入口包
+
+// utils/helper.go
+package utils  // 库包，目录名通常与包名一致
+
+// ==================== 导入语法 ====================
+package main
+
+import (
+    // 标准库
+    "fmt"
+    "os"
+    "net/http"
+    
+    // 第三方包
+    "github.com/gin-gonic/gin"
+    "github.com/spf13/cobra"
+    
+    // 本地包 (模块路径 + 相对路径)
+    "myproject/internal/utils"
+    "myproject/pkg/models"
+)
+
+// 单个导入
+import "fmt"
+
+// ==================== 导入别名 ====================
+import (
+    "fmt"
+    
+    // 别名
+    myfmt "myproject/pkg/fmt"
+    
+    // 点导入 (不推荐，污染命名空间)
+    . "math"
+    
+    // 空白导入 (仅执行 init，不使用)
+    _ "github.com/lib/pq"
+)
+
+// 使用
+func main() {
+    fmt.Println("standard")
+    myfmt.Custom()
+    
+    // 点导入后可直接使用
+    result := Sqrt(16)  // 而非 math.Sqrt
+}
+
+// ==================== 导出规则 (大小写) ====================
+// models/user.go
+package models
+
+// 公开 (大写开头) - 其他包可访问
+type User struct {
+    ID   int    // 公开字段
+    Name string // 公开字段
+    age  int    // 私有字段 (小写)
+}
+
+// 公开函数
+func NewUser(name string) *User {
+    return &User{Name: name}
+}
+
+// 公开方法
+func (u *User) GetName() string {
+    return u.Name
+}
+
+// 私有函数 (小写开头) - 仅包内可访问
+func validateUser(u *User) bool {
+    return u.Name != ""
+}
+
+// 公开常量和变量
+const MaxUsers = 100
+var DefaultUser = &User{Name: "guest"}
+
+// 私有常量和变量
+const maxRetries = 3
+var internalCache = make(map[string]string)
+
+// ==================== internal 包 ====================
+/*
+项目结构:
+myproject/
+├── cmd/
+│   └── app/
+│       └── main.go
+├── internal/          # 内部包，外部项目不可导入
+│   ├── auth/
+│   │   └── auth.go
+│   └── database/
+│       └── db.go
+├── pkg/               # 公开包，可被外部导入
+│   └── models/
+│       └── user.go
+└── go.mod
+*/
+
+// internal 包只能被同一模块内的代码导入
+// 外部项目导入 internal 会报错
+
+// ==================== init 函数 ====================
+package database
+
+import "database/sql"
+
+var db *sql.DB
+
+// init 在包被导入时自动执行
+// 一个包可以有多个 init，按文件名顺序执行
+func init() {
+    var err error
+    db, err = sql.Open("postgres", "...")
+    if err != nil {
+        panic(err)
+    }
+}
+
+// 另一个文件的 init
+func init() {
+    // 执行迁移等
+}
+
+// ==================== 包组织最佳实践 ====================
+/*
+myproject/
+├── cmd/                    # 可执行文件入口
+│   ├── server/
+│   │   └── main.go
+│   └── cli/
+│       └── main.go
+├── internal/               # 私有代码
+│   ├── handler/
+│   ├── service/
+│   └── repository/
+├── pkg/                    # 可导出的库代码
+│   ├── api/
+│   └── models/
+├── api/                    # API 定义 (OpenAPI, protobuf)
+├── configs/                # 配置文件
+├── scripts/                # 脚本
+├── go.mod
+└── go.sum
+*/
+
+// ==================== go.mod 模块文件 ====================
+/*
+module github.com/username/myproject
+
+go 1.21
+
+require (
+    github.com/gin-gonic/gin v1.9.1
+    github.com/spf13/cobra v1.7.0
+)
+
+require (
+    // 间接依赖
+    github.com/inconshreveable/mousetrap v1.1.0 // indirect
+)
+
+replace (
+    // 本地开发替换
+    github.com/some/pkg => ../local/pkg
+)
+*/
+
+// ==================== 子包导入 ====================
+// 同一模块内的包导入
+// myproject/internal/service/user.go
+package service
+
+import (
+    "myproject/internal/repository"
+    "myproject/pkg/models"
+)
+
+type UserService struct {
+    repo *repository.UserRepository
+}
+
+func (s *UserService) GetUser(id int) (*models.User, error) {
+    return s.repo.FindByID(id)
+}
+
+// ==================== 接口与实现分离 ====================
+// pkg/storage/interface.go
+package storage
+
+type Storage interface {
+    Get(key string) ([]byte, error)
+    Set(key string, value []byte) error
+    Delete(key string) error
+}
+
+// internal/storage/redis/redis.go
+package redis
+
+import "myproject/pkg/storage"
+
+type RedisStorage struct {
+    // ...
+}
+
+// 确保实现接口
+var _ storage.Storage = (*RedisStorage)(nil)
+
+func (r *RedisStorage) Get(key string) ([]byte, error) {
+    // 实现
+}
+```
+
+### Rust 模块导入导出
+
+```rust
+// ==================== 模块声明 ====================
+// src/lib.rs 或 src/main.rs
+
+// 声明模块 (从文件或目录加载)
+mod utils;      // 加载 src/utils.rs 或 src/utils/mod.rs
+mod models;     // 加载 src/models.rs 或 src/models/mod.rs
+
+// 内联模块
+mod inline_module {
+    pub fn helper() {}
+}
+
+// ==================== 文件结构 ====================
+/*
+my_crate/
+├── Cargo.toml
+└── src/
+    ├── lib.rs          # 库 crate 根
+    ├── main.rs         # 二进制 crate 根
+    ├── utils.rs        # utils 模块
+    └── models/         # models 模块 (目录形式)
+        ├── mod.rs      # 模块入口
+        ├── user.rs     # 子模块
+        └── post.rs     # 子模块
+*/
+
+// ==================== 可见性 (pub) ====================
+// src/lib.rs
+mod internal {
+    // 私有 - 仅当前模块可见
+    fn private_fn() {}
+    
+    // 公开 - 外部可见
+    pub fn public_fn() {}
+    
+    // pub(crate) - 仅当前 crate 可见
+    pub(crate) fn crate_fn() {}
+    
+    // pub(super) - 仅父模块可见
+    pub(super) fn parent_fn() {}
+    
+    // pub(in path) - 指定路径可见
+    pub(in crate::internal) fn specific_fn() {}
+}
+
+// 公开结构体
+pub struct User {
+    pub name: String,      // 公开字段
+    pub(crate) email: String,  // crate 内可见
+    password: String,      // 私有字段
+}
+
+impl User {
+    // 公开关联函数
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            email: String::new(),
+            password: String::new(),
+        }
+    }
+    
+    // 私有方法
+    fn validate(&self) -> bool {
+        !self.name.is_empty()
+    }
+}
+
+// ==================== use 导入 ====================
+// 导入标准库
+use std::collections::HashMap;
+use std::io::{self, Read, Write};  // self 导入 io 本身
+
+// 导入外部 crate
+use serde::{Serialize, Deserialize};
+use tokio::sync::mpsc;
+
+// 导入当前 crate
+use crate::models::User;
+use crate::utils::helper;
+
+// 导入父模块
+use super::parent_function;
+
+// 导入同级模块
+use self::sibling_module::something;
+
+// ==================== 重命名与通配符 ====================
+// 重命名
+use std::collections::HashMap as Map;
+use std::io::Result as IoResult;
+
+// 通配符 (不推荐，除非 prelude)
+use std::collections::*;
+
+// 嵌套导入
+use std::{
+    collections::{HashMap, HashSet},
+    io::{self, Read, Write},
+    sync::{Arc, Mutex},
+};
+
+// ==================== 重导出 (pub use) ====================
+// src/lib.rs
+mod internal_impl;
+
+// 重导出为公开 API
+pub use internal_impl::ImportantStruct;
+pub use internal_impl::important_function;
+
+// 重命名后重导出
+pub use internal_impl::OldName as NewName;
+
+// 重导出外部 crate
+pub use serde_json::Value as JsonValue;
+
+// ==================== prelude 模式 ====================
+// src/prelude.rs
+pub use crate::models::{User, Post, Comment};
+pub use crate::traits::{Validate, Serialize};
+pub use crate::error::{Error, Result};
+
+// 使用方在一行导入常用项
+use my_crate::prelude::*;
+
+// ==================== 模块文件组织 ====================
+// src/models/mod.rs
+mod user;
+mod post;
+mod comment;
+
+// 公开子模块内容
+pub use user::User;
+pub use post::Post;
+pub use comment::Comment;
+
+// 或公开整个子模块
+pub mod user;
+pub mod post;
+
+// src/models/user.rs
+#[derive(Debug, Clone)]
+pub struct User {
+    pub id: u64,
+    pub name: String,
+}
+
+impl User {
+    pub fn new(name: String) -> Self {
+        Self { id: 0, name }
+    }
+}
+
+// ==================== 条件编译与导入 ====================
+// 平台特定
+#[cfg(target_os = "windows")]
+mod windows_impl;
+
+#[cfg(target_os = "linux")]
+mod linux_impl;
+
+#[cfg(target_os = "windows")]
+pub use windows_impl::*;
+
+#[cfg(target_os = "linux")]
+pub use linux_impl::*;
+
+// feature 特定
+#[cfg(feature = "async")]
+pub mod async_api;
+
+#[cfg(feature = "async")]
+pub use async_api::*;
+
+// ==================== 外部 crate 导入 ====================
+// Cargo.toml
+/*
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+
+[dev-dependencies]
+mockall = "0.11"
+
+[build-dependencies]
+cc = "1.0"
+*/
+
+// 使用
+use serde::{Serialize, Deserialize};
+use tokio::runtime::Runtime;
+use anyhow::{Result, Context};
+
+// ==================== 路径类型 ====================
+// 绝对路径 (从 crate 根开始)
+use crate::models::User;
+use crate::utils::helper;
+
+// 相对路径
+use self::submodule::Item;      // 当前模块的子模块
+use super::sibling::Other;      // 父模块的兄弟模块
+use super::super::ancestor::X;  // 祖父模块
+
+// ==================== workspace 模块 ====================
+// workspace Cargo.toml
+/*
+[workspace]
+members = [
+    "crates/core",
+    "crates/api",
+    "crates/cli",
+]
+*/
+
+// crates/api/Cargo.toml
+/*
+[dependencies]
+core = { path = "../core" }
+*/
+
+// crates/api/src/lib.rs
+use core::models::User;  // 使用 workspace 内其他 crate
+
+// ==================== 测试模块 ====================
+// src/lib.rs
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;  // 导入父模块所有公开项
+    
+    #[test]
+    fn test_add() {
+        assert_eq!(add(2, 3), 5);
+    }
+}
+
+// 集成测试 (tests/integration_test.rs)
+use my_crate::add;  // 只能访问公开 API
+
+#[test]
+fn integration_test() {
+    assert_eq!(add(1, 2), 3);
+}
+```
+
+### 模块导入导出对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 操作            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 导入模块        │ import * as M        │ import module        │ import "pkg"         │ use crate::module    │
+│ 导入特定项      │ import { a, b }      │ from m import a, b   │ (自动全部)           │ use mod::{a, b}      │
+│ 重命名导入      │ import { a as x }    │ from m import a as x │ import pkg "path"    │ use mod::a as x      │
+│ 默认导出        │ export default       │ ❌                   │ ❌                   │ ❌                   │
+│ 命名导出        │ export { a, b }      │ __all__ = [...]      │ 大写首字母           │ pub                  │
+│ 重导出          │ export { } from      │ from m import *      │ 包装函数             │ pub use              │
+│ 私有项          │ 不导出               │ _前缀 (约定)         │ 小写首字母           │ 不加 pub             │
+│ 动态导入        │ import()             │ importlib            │ 插件机制             │ ❌                   │
+│ 循环依赖        │ ⚠️ 运行时处理        │ ⚠️ 需注意顺序        │ ❌ 编译错误          │ ❌ 编译错误          │
+│ 路径别名        │ tsconfig paths       │ setuptools           │ go.mod replace       │ Cargo.toml           │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 常见模块模式
+
+| 模式 | 描述 | 推荐语言 |
+|------|------|----------|
+| **Barrel 文件** | index 文件重导出子模块 | TypeScript |
+| **Prelude** | 常用项集中导出 | Rust |
+| **\_\_all\_\_** | 控制 * 导入范围 | Python |
+| **internal 包** | 内部实现不可外部导入 | Go |
+| **pub(crate)** | crate 内可见，外部不可见 | Rust |
+| **条件导入** | 按环境/特性选择模块 | 全部支持 |
+| **懒加载** | 按需动态导入模块 | TypeScript/Python |
+
+---
+
 ## 📝 格式化
 
 ### 格式化概览
@@ -14314,6 +23880,359 @@ cargo bench                         # 运行基准测试
 cargo flamegraph                    # 生成火焰图
 cargo build --timings               # 编译时间分析
 ```
+
+---
+
+## 🎯 语言特性与特殊语法
+
+### 特性支持概览
+
+| 特性 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 解构赋值 | ✅ | ✅ | ❌ | ✅ |
+| 展开运算符 | ✅ `...` | ✅ `*`/`**` | ✅ `...` | ❌ |
+| 可选链 | ✅ `?.` | ❌ | ❌ | ❌ |
+| 空值合并 | ✅ `??` | ❌ | ❌ | ❌ |
+| 模式匹配 | ❌ | ✅ `match` | ❌ | ✅ `match` |
+| 装饰器 | ✅ | ✅ | ❌ | ✅ (属性宏) |
+| 运算符重载 | ❌ | ✅ | ❌ | ✅ |
+| 宏系统 | ❌ | ❌ | ❌ | ✅ |
+| 标签语句 | ✅ | ❌ | ✅ | ✅ |
+| defer/finally | finally | finally | defer | Drop |
+
+### TypeScript 特殊语法
+
+```typescript
+// ==================== 解构赋值 ====================
+const { name, age } = user;                    // 对象解构
+const { name: userName } = user;               // 重命名
+const { name, ...rest } = user;                // 剩余属性
+const { name, country = "USA" } = user;        // 默认值
+const [first, second, ...rest] = [1, 2, 3, 4]; // 数组解构
+const [a, , b] = [1, 2, 3];                    // 跳过元素
+let a = 1, b = 2; [a, b] = [b, a];            // 交换变量
+
+// ==================== 展开运算符 ====================
+const arr2 = [...arr1, 4, 5];          // 数组展开
+const obj2 = { ...obj1, c: 3 };        // 对象展开
+Math.max(...args);                      // 函数调用展开
+function sum(...nums: number[]) {}     // 剩余参数
+
+// ==================== 可选链 (?.) ====================
+user?.profile?.address?.city;          // 安全访问
+user.getName?.();                       // 方法调用
+arr?.[0];                               // 数组索引
+
+// ==================== 空值合并 (??) ====================
+const value = null ?? "default";       // "default"
+const value2 = 0 ?? "default";         // 0 (只检查 null/undefined)
+x ??= 10;                               // 赋值运算符
+
+// ==================== 类型断言 ====================
+const input = el as HTMLInputElement;   // as 断言
+const colors = ["red", "blue"] as const; // const 断言
+const config = {} satisfies Config;     // satisfies (TS 4.9+)
+
+// ==================== 非空断言 (!) ====================
+const element = document.getElementById("app")!;
+
+// ==================== 标签语句 ====================
+outer: for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+        if (condition) break outer;     // 跳出外层循环
+    }
+}
+
+// ==================== 模板字面量类型 ====================
+type EventName = `on${Capitalize<string>}`;
+
+// ==================== 装饰器 ====================
+@log
+class MyClass {
+    @validate
+    method() {}
+}
+```
+
+### Python 特殊语法
+
+```python
+# ==================== 解构赋值 ====================
+a, b, c = (1, 2, 3)                    # 元组解包
+a, b = b, a                            # 交换
+first, *rest = [1, 2, 3, 4]            # 剩余元素
+first, *middle, last = [1, 2, 3, 4, 5]
+
+# ==================== 展开运算符 ====================
+arr2 = [*arr1, 4, 5]                   # 列表展开
+dict2 = {**dict1, "c": 3}              # 字典展开
+print(*args, **kwargs)                 # 函数调用展开
+def func(*args, **kwargs): pass        # 接收任意参数
+def func(a, *, b, c): pass             # 仅关键字参数
+def func(a, b, /, c): pass             # 仅位置参数 (3.8+)
+
+# ==================== 模式匹配 (3.10+) ====================
+match command:
+    case ["load", filename]:
+        load(filename)
+    case {"action": "click", "x": x, "y": y}:
+        click(x, y)
+    case Point(x=0, y=y):
+        print(f"On Y-axis at {y}")
+    case _:
+        print("Unknown")
+
+# ==================== 海象运算符 (:=) 3.8+ ====================
+if (n := len(data)) > 10:
+    print(f"Too long: {n}")
+while (line := file.readline()):
+    process(line)
+
+# ==================== f-string ====================
+f"{name=}"                             # 调试: name='value'
+f"{value:>10}"                         # 格式化
+f"{value:.2f}"                         # 小数位
+
+# ==================== 装饰器 ====================
+@decorator
+def func(): pass
+
+@decorator_with_args(arg)
+def func(): pass
+
+# ==================== 上下文管理器 ====================
+with open("file") as f, lock:
+    content = f.read()
+
+# ==================== 运算符重载 ====================
+class Vector:
+    def __add__(self, other): ...
+    def __mul__(self, scalar): ...
+    def __eq__(self, other): ...
+
+# ==================== 生成器表达式 ====================
+gen = (x**2 for x in range(1000))      # 惰性求值
+lst = [x**2 for x in range(1000)]      # 立即求值
+```
+
+### Go 特殊语法
+
+```go
+// ==================== 短变量声明 ====================
+x := 42                                // 类型推断
+name, age := "Alice", 30               // 多变量
+_, err := doSomething()                // 忽略值
+
+// ==================== defer ====================
+defer f.Close()                        // 函数返回前执行
+// 多个 defer - LIFO 顺序执行
+
+// ==================== 多返回值 ====================
+func divide(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, errors.New("division by zero")
+    }
+    return a / b, nil
+}
+result, err := divide(10, 2)
+
+// 命名返回值
+func f() (result int, err error) {
+    result = 42
+    return  // 裸 return
+}
+
+// ==================== 类型断言 ====================
+s := i.(string)                        // 可能 panic
+s, ok := i.(string)                    // 安全
+
+// type switch
+switch v := i.(type) {
+case int:    fmt.Println("int", v)
+case string: fmt.Println("string", v)
+default:     fmt.Println("unknown")
+}
+
+// ==================== 标签与跳转 ====================
+OuterLoop:
+    for i := 0; i < 3; i++ {
+        for j := 0; j < 3; j++ {
+            if condition {
+                break OuterLoop
+            }
+        }
+    }
+
+// ==================== iota 枚举 ====================
+const (
+    Sunday = iota  // 0
+    Monday         // 1
+    Tuesday        // 2
+)
+const (
+    KB = 1 << (10 * iota)  // 1024
+    MB                      // 1048576
+    GB                      // 1073741824
+)
+
+// ==================== 展开运算符 ====================
+sum(nums...)                           // 切片展开
+combined := append(s1, s2...)          // append 展开
+
+// ==================== 嵌入 (组合) ====================
+type Dog struct {
+    Animal                             // 嵌入
+    Breed string
+}
+dog.Name                               // 访问嵌入字段
+dog.Speak()                            // 调用嵌入方法
+
+// ==================== 空白标识符 ====================
+_, err := f()                          // 忽略返回值
+import _ "pkg"                         // 仅导入副作用
+for _, v := range slice {}             // 忽略索引
+
+// ==================== init 函数 ====================
+func init() {
+    // 包初始化时自动执行
+}
+
+// ==================== 方法表达式 ====================
+f := n.Double                          // 方法值
+g := MyInt.Double                      // 方法表达式
+```
+
+### Rust 特殊语法
+
+```rust
+// ==================== 模式匹配 ====================
+match n {
+    0 => "zero",
+    1 | 2 | 3 => "small",
+    4..=9 => "medium",
+    x if x < 0 => "negative",
+    x @ 10..=20 => format!("{} in range", x),
+    _ => "other",
+}
+
+// ==================== if let / while let ====================
+if let Some(v) = maybe { use(v); }
+while let Some(v) = iter.next() { use(v); }
+let Some(v) = maybe else { return; };  // let else (1.65+)
+
+// ==================== ? 运算符 ====================
+let content = fs::read_to_string(path)?;  // 错误传播
+let value = option?;                       // Option 也可用
+
+// ==================== 解构赋值 ====================
+let (x, y) = (1, 2);                       // 元组
+let Point { x, y } = point;                // 结构体
+let [first, rest @ ..] = arr;              // 数组
+
+// ==================== 闭包 ====================
+let add = |a, b| a + b;                    // 简化形式
+let closure = move || println!("{}", s);  // move 获取所有权
+
+// ==================== 迭代器链 ====================
+numbers.iter()
+    .filter(|&&x| x % 2 == 0)
+    .map(|&x| x * 2)
+    .collect::<Vec<_>>();
+
+// ==================== 宏 ====================
+println!("Hello, {}!", name);
+vec![1, 2, 3];
+assert_eq!(a, b);
+dbg!(expression);                          // 调试打印
+todo!();                                   // 标记未实现
+
+// 声明式宏
+macro_rules! say_hello {
+    () => { println!("Hello!"); };
+    ($name:expr) => { println!("Hello, {}!", $name); };
+}
+
+// ==================== 属性宏 ====================
+#[derive(Debug, Clone, PartialEq)]
+struct Point { x: i32, y: i32 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_it() { assert!(true); }
+}
+
+#[inline]
+#[allow(dead_code)]
+#[deprecated(note = "use new_fn")]
+
+// ==================== 运算符重载 ====================
+impl Add for Vector {
+    type Output = Self;
+    fn add(self, other: Self) -> Self { ... }
+}
+
+// ==================== 标签循环 ====================
+'outer: for i in 0..3 {
+    for j in 0..3 {
+        if cond { break 'outer; }
+    }
+}
+let result = 'search: loop {
+    if found { break 'search value; }
+};
+
+// ==================== turbofish ::<> ====================
+let parsed = "42".parse::<i32>().unwrap();
+let vec = iter.collect::<Vec<_>>();
+
+// ==================== unsafe ====================
+unsafe {
+    let ptr = &x as *const i32;
+    println!("{}", *ptr);
+}
+```
+
+### 特殊语法对比
+
+```
+┌─────────────────┬──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
+│ 特性            │ TypeScript           │ Python               │ Go                   │ Rust                 │
+├─────────────────┼──────────────────────┼──────────────────────┼──────────────────────┼──────────────────────┤
+│ 解构赋值        │ const {a} = obj      │ a, b = tuple         │ ❌                   │ let (a,b) = t        │
+│ 展开            │ ...arr               │ *args, **kw          │ slice...             │ ❌                   │
+│ 可选链          │ obj?.prop            │ ❌                   │ ❌                   │ ❌                   │
+│ 空值合并        │ a ?? b               │ ❌                   │ ❌                   │ .unwrap_or(b)        │
+│ 错误传播        │ throw                │ raise                │ return err           │ ?                    │
+│ 模式匹配        │ ❌                   │ match                │ switch.(type)        │ match                │
+│ 延迟执行        │ finally              │ finally              │ defer                │ Drop                 │
+│ 装饰器          │ @decorator           │ @decorator           │ ❌                   │ #[attr]              │
+│ 运算符重载      │ ❌                   │ __add__              │ ❌                   │ impl Add             │
+│ 宏              │ ❌                   │ ❌                   │ ❌                   │ macro_rules!         │
+│ 标签循环        │ label: for           │ ❌                   │ Label: for           │ 'label: for          │
+└─────────────────┴──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
+### 语法糖对照表
+
+| 功能 | TypeScript | Python | Go | Rust |
+|------|------------|--------|-----|------|
+| 短路求值 | `a && b` | `a and b` | `a && b` | `a && b` |
+| 三元运算 | `a ? b : c` | `b if a else c` | 无(用if) | `if a {b} else {c}` |
+| 字符串插值 | `` `${x}` `` | `f"{x}"` | `fmt.Sprintf` | `format!("{}", x)` |
+| 范围 | `for(;;)` | `range(n)` | `for i:=0;i<n;i++` | `0..n` |
+| 包含范围 | 无 | 无 | 无 | `0..=n` |
+| 类型推断 | `const x = 1` | `x = 1` | `x := 1` | `let x = 1` |
+| 匿名函数 | `() => {}` | `lambda: x` | `func() {}` | `\|\| {}` |
+
+### 独特语法特性
+
+| 语言 | 独特特性 |
+|------|----------|
+| **TypeScript** | 可选链 `?.`、空值合并 `??`、类型守卫、模板字面量类型、satisfies |
+| **Python** | 海象运算符 `:=`、f-string 调试 `{x=}`、模式匹配 `match`、切片步长 `[::2]` |
+| **Go** | `defer`、多返回值、`iota` 枚举、类型嵌入、`init()` 函数、`:=` 短声明 |
+| **Rust** | `?` 错误传播、`match` 模式匹配、生命周期 `'a`、宏系统、`unsafe`、turbofish `::<>` |
 
 ---
 
