@@ -4243,16 +4243,16 @@ fn old_function() {}
 
 ### 日期类型概览
 
-| 语言 | 主要类型 | 时区支持 | 精度 |
-|------|----------|----------|------|
-| TypeScript | `Date` | 有限 | 毫秒 |
-| Python | `datetime` | 完善 (pytz/zoneinfo) | 微秒 |
-| Go | `time.Time` | 内置完善 | 纳秒 |
-| Rust | `chrono` crate | 完善 | 纳秒 |
+| 语言 | 主要类型 | 推荐库 | 时区支持 | 精度 |
+|------|----------|--------|----------|------|
+| TypeScript | `Date` | **dayjs** | dayjs: 完善 | 毫秒 |
+| Python | `datetime` | 内置 + dateutil | 完善 (zoneinfo) | 微秒 |
+| Go | `time.Time` | 内置 | 内置完善 | 纳秒 |
+| Rust | `chrono` | chrono | 完善 | 纳秒 |
 
 ### 创建日期
 
-**TypeScript**
+**TypeScript (原生 Date)**
 ```typescript
 // 当前时间
 const now = new Date();
@@ -4267,6 +4267,41 @@ const fromTimestamp = new Date(1710489600000);
 
 // ISO 字符串
 const iso = new Date('2024-03-15T10:30:00Z');
+```
+
+**TypeScript (dayjs - 推荐)**
+```typescript
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/zh-cn';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.extend(relativeTime);
+
+// 当前时间
+const now = dayjs();
+
+// 指定日期
+const date1 = dayjs('2024-03-15');
+const date2 = dayjs('2024-03-15 10:30:00');
+const date3 = dayjs({ year: 2024, month: 2, day: 15 });  // 月份从 0 开始
+
+// 时间戳
+const fromTimestamp = dayjs(1710489600000);
+const fromUnix = dayjs.unix(1710489600);
+
+// ISO 字符串
+const iso = dayjs('2024-03-15T10:30:00Z');
+
+// UTC
+const utcTime = dayjs.utc('2024-03-15');
+
+// 时区
+const tokyo = dayjs().tz('Asia/Tokyo');
+const shanghai = dayjs.tz('2024-03-15 10:00', 'Asia/Shanghai');
 ```
 
 **Python**
@@ -4341,7 +4376,7 @@ let parsed_dt = DateTime::parse_from_rfc3339("2024-03-15T10:30:00Z").unwrap();
 
 ### 日期格式化
 
-**TypeScript**
+**TypeScript (原生 Date)**
 ```typescript
 const date = new Date('2024-03-15T10:30:00');
 
@@ -4350,7 +4385,7 @@ date.toISOString();       // "2024-03-15T10:30:00.000Z"
 date.toLocaleDateString(); // "3/15/2024" (依赖 locale)
 date.toLocaleString('zh-CN'); // "2024/3/15 10:30:00"
 
-// Intl API (推荐)
+// Intl API
 const formatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
   month: '2-digit',
@@ -4359,10 +4394,30 @@ const formatter = new Intl.DateTimeFormat('zh-CN', {
   minute: '2-digit'
 });
 formatter.format(date);  // "2024/03/15 10:30"
+```
 
-// 手动格式化
-const pad = (n: number) => n.toString().padStart(2, '0');
-`${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+**TypeScript (dayjs - 推荐)**
+```typescript
+const d = dayjs('2024-03-15T10:30:00');
+
+// format 方法
+d.format('YYYY-MM-DD');              // "2024-03-15"
+d.format('YYYY年MM月DD日');           // "2024年03月15日"
+d.format('YYYY-MM-DD HH:mm:ss');     // "2024-03-15 10:30:00"
+d.format('dddd, MMMM D, YYYY');      // "Friday, March 15, 2024"
+d.format('YYYY/MM/DD HH:mm');        // "2024/03/15 10:30"
+
+// 本地化
+dayjs.locale('zh-cn');
+d.format('dddd');                    // "星期五"
+d.format('MMMM');                    // "三月"
+
+// ISO 格式
+d.toISOString();                     // "2024-03-15T10:30:00.000Z"
+d.toJSON();                          // "2024-03-15T10:30:00.000Z"
+
+// 常用格式
+d.format();                          // "2024-03-15T10:30:00+08:00" (默认 ISO)
 ```
 
 **Python**
@@ -4419,18 +4474,13 @@ dt.to_rfc2822()                             // "Fri, 15 Mar 2024 10:30:00 +0000"
 
 ### 日期差计算
 
-**TypeScript**
+**TypeScript (原生 Date)**
 ```typescript
 const date1 = new Date('2024-03-15');
 const date2 = new Date('2024-03-20');
 
 // 毫秒差
 const diffMs = date2.getTime() - date1.getTime();
-
-// 转换为各单位
-const diffSeconds = diffMs / 1000;
-const diffMinutes = diffMs / (1000 * 60);
-const diffHours = diffMs / (1000 * 60 * 60);
 const diffDays = diffMs / (1000 * 60 * 60 * 24);  // 5
 
 // 添加天数
@@ -4439,13 +4489,63 @@ const addDays = (date: Date, days: number): Date => {
   result.setDate(result.getDate() + days);
   return result;
 };
+```
 
-// 添加月份（注意月末边界）
-const addMonths = (date: Date, months: number): Date => {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
-};
+**TypeScript (dayjs - 推荐)**
+```typescript
+const d1 = dayjs('2024-03-15');
+const d2 = dayjs('2024-03-20');
+
+// 日期差 (需要 duration 插件或直接计算)
+d2.diff(d1, 'day');          // 5
+d2.diff(d1, 'hour');         // 120
+d2.diff(d1, 'month');        // 0
+d2.diff(d1, 'week');         // 0
+d2.diff(d1, 'year', true);   // 0.0136... (浮点数)
+
+// 添加时间 (返回新对象，不可变)
+d1.add(5, 'day');            // 2024-03-20
+d1.add(1, 'month');          // 2024-04-15
+d1.add(1, 'year');           // 2025-03-15
+d1.add(2, 'week');           // 2024-03-29
+d1.add(3, 'hour');           // 2024-03-15 03:00:00
+
+// 减少时间
+d1.subtract(1, 'month');     // 2024-02-15
+
+// 链式操作
+d1.add(1, 'month').subtract(5, 'day');
+
+// 相对时间 (需要 relativeTime 插件)
+dayjs().from(d1);            // "in X days" 或 "X days ago"
+dayjs().to(d1);              // "X days ago" 或 "in X days"
+d1.fromNow();                // "X days ago"
+d1.toNow();                  // "in X days"
+
+// 开始/结束
+d1.startOf('month');         // 2024-03-01 00:00:00
+d1.startOf('week');          // 周的第一天
+d1.startOf('day');           // 2024-03-15 00:00:00
+d1.endOf('month');           // 2024-03-31 23:59:59
+d1.endOf('year');            // 2024-12-31 23:59:59
+
+// 比较
+d1.isBefore(d2);             // true
+d1.isAfter(d2);              // false
+d1.isSame(d2, 'month');      // true (同一个月)
+d1.isBetween('2024-03-01', '2024-03-31');  // true (需要 isBetween 插件)
+
+// 获取/设置
+d1.year();                   // 2024
+d1.month();                  // 2 (0-11)
+d1.date();                   // 15
+d1.day();                    // 5 (周五, 0=周日)
+d1.hour();                   // 0
+d1.minute();                 // 0
+d1.second();                 // 0
+
+d1.year(2025);               // 设置年份，返回新对象
+d1.month(5);                 // 设置月份
 ```
 
 **Python**
